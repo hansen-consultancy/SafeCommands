@@ -334,6 +334,45 @@ safe git status --json
 4. **Startup time**: < 200ms to first output
 5. **Error messages**: Clear, actionable, include the blocked reason and safe alternative
 
+## Real-World Incident Research
+
+Research across GitHub issues for Claude Code, Gemini CLI, Cursor, Codex, Replit, and Kiro revealed
+70+ documented incidents of AI agents executing destructive commands. SafeCommands is designed to
+prevent every category of incident found.
+
+### Incidents by Category
+
+| Category | Example Incident | SafeCommands Mitigation |
+|----------|-----------------|------------------------|
+| `git reset --hard` (8+ incidents) | 12 unpushed commits destroyed, 11.5 hrs work lost | Command not available through `safe` at all |
+| `rm -rf` expanding beyond target (10+ incidents) | Entire home directory deleted, 15k family photos lost | `safe file` only deletes tracked files or temp/build dirs |
+| `git checkout` with dirty tree (5+ incidents) | 30+ files of uncommitted edits destroyed | `safe git checkout` requires clean working tree |
+| DB migrations with `--force` (6+ incidents) | 60+ production tables dropped via `drizzle-kit push --force` | `safe db` blocks all `--force`/`--force-reset`/`--accept-data-loss` flags |
+| `git push --force` (3+ incidents) | Contributor's commit history rewritten | `safe git push` blocks `--force` (allows `--force-with-lease`) |
+| `terraform destroy` (2+ incidents) | 2.5 years of production data wiped | `terraform destroy` not in proxy allowlist |
+| `git branch -D` (2+ incidents) | Only copy of work deleted | Only `safe git branch` (list) and `branch-create` available |
+| `--no-verify` bypassing hooks (2+ incidents) | Pre-commit safety hooks bypassed | `safe git commit` blocks `--no-verify` |
+| `npm audit fix --force` (1+ incidents) | Breaking major version changes | `safe npm audit-fix` blocks `--force` |
+| `git commit --amend` after push (2+ incidents) | Diverged history requiring force push | `safe git commit-amend` blocks if HEAD already pushed |
+
+### Sources
+
+Key GitHub issue repos searched:
+- anthropics/claude-code (40+ destructive command issues)
+- google-gemini/gemini-cli (15+ issues)
+- openai/codex (5+ issues)
+- Cursor forums (10+ reports)
+- Replit, Amazon Kiro incidents (press coverage)
+
+### Existing Similar Tools Found
+
+- `destructive_command_guard` - Python-based command interceptor
+- `claude-code-safety-net` - Pre-tool-use hook for Claude Code
+- `safeexec` - Agentify's execution wrapper
+- `leash` - CLI command allowlist tool
+
+SafeCommands differs by providing a **complete, built-in command surface** rather than an interceptor/hook approach, making it agent-agnostic and allowlist-friendly.
+
 ## Future Considerations
 
 - Shell completion scripts generation

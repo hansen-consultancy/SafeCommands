@@ -18,6 +18,7 @@ static class CommandRegistry
         PnpmCommands.Register(_commands);
         BunCommands.Register(_commands);
         DotnetCommands.Register(_commands);
+        DbCommands.Register(_commands);
         EnvCommands.Register(_commands);
         ProxyCommands.Register(_commands);
     }

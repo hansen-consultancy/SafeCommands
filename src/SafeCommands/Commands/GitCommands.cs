@@ -8,7 +8,8 @@ static class GitCommands
     // Flags allowed for read-only git commands
     private static readonly HashSet<string> LogAllowedFlags = ["-n", "--oneline", "--graph", "--format", "--pretty", "--author", "--since", "--until", "--all", "--stat", "--no-merges", "--first-parent", "--reverse", "--abbrev-commit", "--date"];
     private static readonly HashSet<string> DiffAllowedFlags = ["--staged", "--cached", "--name-only", "--name-status", "--stat", "--shortstat", "--numstat", "--diff-filter", "--no-color", "--color=never", "--unified", "-U"];
-    private static readonly HashSet<string> PushBlockedFlags = ["--force", "-f", "--delete"];
+    private static readonly HashSet<string> PushBlockedFlags = ["--force", "-f", "--delete", "--no-verify"];
+    private static readonly HashSet<string> CommitBlockedFlags = ["--no-verify"];
     private static readonly HashSet<string> AddBlockedArgs = ["-A", "--all", "."];
 
     public static void Register(List<CommandDefinition> commands)
@@ -247,6 +248,15 @@ static class GitCommands
     private static int RunCommit(string[] args, bool json)
     {
         if (RequireGitRepo() != 0) return 1;
+
+        // Block --no-verify - agents must not bypass pre-commit hooks
+        if (args.Contains("--no-verify") || args.Contains("-n"))
+        {
+            OutputFormatter.WriteBlocked("git commit --no-verify",
+                "Bypassing pre-commit hooks is not allowed - hooks exist for safety",
+                "Fix the issue that the hook is catching, then commit normally");
+            return 1;
+        }
 
         // Require -m flag with message
         var msgIndex = Array.IndexOf(args, "-m");

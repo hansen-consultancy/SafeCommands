@@ -29,6 +29,7 @@ static class NpmCommands
             new("npm", "run", "Run package script (allowed list)", "safe npm run <script>", SafetyLevel.SafeWrite, RunScript),
             new("npm", "test", "Run tests", "safe npm test", SafetyLevel.SafeWrite, RunTest),
             new("npm", "build", "Build project", "safe npm build", SafetyLevel.SafeWrite, RunBuild),
+            new("npm", "audit-fix", "Fix audit issues (no --force)", "safe npm audit-fix", SafetyLevel.TargetedWrite, RunAuditFix),
             new("npm", "cache-clean", "Clean npm cache", "safe npm cache-clean", SafetyLevel.SafeWrite, RunCacheClean),
             new("npm", "dedupe", "Deduplicate dependencies", "safe npm dedupe", SafetyLevel.SafeWrite, RunDedupe),
         ]);
@@ -113,6 +114,18 @@ static class NpmCommands
         }
 
         return RunNpm(["run", ..args], json);
+    }
+
+    private static int RunAuditFix(string[] args, bool json)
+    {
+        if (args.Contains("--force"))
+        {
+            OutputFormatter.WriteBlocked("npm audit fix --force",
+                "Force audit fix can install breaking major version changes",
+                "safe npm audit-fix (without --force) for safe semver-compatible fixes");
+            return 1;
+        }
+        return RunNpm(["audit", "fix", ..args], json);
     }
 
     private static int RunTest(string[] args, bool json) => RunNpm(["test", ..args], json);

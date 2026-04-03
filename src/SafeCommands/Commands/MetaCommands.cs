@@ -57,6 +57,7 @@ static class MetaCommands
                 "npm" => "npm/Node.js package management",
                 "pnpm" => "pnpm package management (safer: no lifecycle scripts by default)",
                 "bun" => "Bun runtime and package management",
+                "db" => "Database migrations (Prisma, Drizzle, EF, Laravel, Django)",
                 "dotnet" => ".NET CLI operations",
                 "env" => "Environment info and tool checks",
                 "proxy" => "Proxy to external tools (gh, az, kubectl, etc.)",

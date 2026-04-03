@@ -69,7 +69,7 @@ static class ProxyCommands
                 "-I", "--head", "-v", "--verbose", "-k", "--insecure"]),
         ],
 
-        // terraform
+        // terraform - EXPLICITLY NO destroy/apply (wiped 2.5 years of production data in real incidents)
         ["terraform"] =
         [
             new("plan", ["-var", "-var-file", "-target", "-out", "-no-color"]),
@@ -84,6 +84,7 @@ static class ProxyCommands
             new("providers", []),
             new("workspace list", []),
             new("workspace show", []),
+            // BLOCKED: destroy, apply, import, taint, untaint -- too dangerous
         ],
 
         // python/pip (install runs setup.py - supply chain risk)
