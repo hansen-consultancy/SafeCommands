@@ -1,0 +1,9 @@
+bin/
+obj/
+nupkg/
+.vs/
+*.user
+*.suo
+*.cache
+.idea/
+*.DotSettings.user
