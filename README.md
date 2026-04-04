@@ -140,21 +140,36 @@ Add to your project's `CLAUDE.md`:
 Use `safe` for all CLI operations. Run `safe help` for available commands.
 ```
 
-Then allowlist it in `.claude/settings.json`:
+Then allowlist all groups in `.claude/settings.local.json`:
 
 ```json
 {
   "permissions": {
     "allow": [
-      "Bash(safe *)"
+      "Bash(safe help:*)",
+      "Bash(safe version:*)",
+      "Bash(safe instructions:*)",
+      "Bash(safe git:*)",
+      "Bash(safe file:*)",
+      "Bash(safe process:*)",
+      "Bash(safe docker:*)",
+      "Bash(safe npm:*)",
+      "Bash(safe pnpm:*)",
+      "Bash(safe bun:*)",
+      "Bash(safe dotnet:*)",
+      "Bash(safe db:*)",
+      "Bash(safe env:*)",
+      "Bash(safe proxy:*)"
     ]
   }
 }
 ```
 
+Or run `safe instructions` which outputs a ready-to-use allowlist that stays in sync with the installed version.
+
 ### Other Agents
 
-For any agent that supports command allowlisting, allowlist `safe` and include the output of `safe instructions` in the agent's context.
+For any agent that supports command allowlisting, allowlist the `safe` command groups and include the output of `safe instructions` in the agent's context.
 
 ## Proxy System
 

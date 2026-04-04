@@ -183,11 +183,28 @@ static class MetaCommands
         var commands = CommandRegistry.Commands;
         var groups = CommandRegistry.Groups.OrderBy(g => g).ToArray();
 
-        return $"""
+        var allowlistRules = string.Join(",\n      ",
+            new[] { "help", "version", "instructions" }.Concat(groups)
+                .Select(g => $"\"Bash(safe {g}:*)\""));
+
+        return $$"""
             ## SafeCommands (`safe`)
 
             This project uses **SafeCommands** - a safe command gateway for AI agents.
-            Add `safe` to your tool allowlist to avoid per-command approval prompts.
+
+            ### Claude Code Allowlist
+
+            Add to `.claude/settings.local.json` to allow all `safe` commands without approval:
+
+            ```json
+            {
+              "permissions": {
+                "allow": [
+                  {{allowlistRules}}
+                ]
+              }
+            }
+            ```
 
             ### Quick Reference
 
@@ -199,6 +216,7 @@ static class MetaCommands
             | docker | `safe docker compose-up -d` | Docker & Compose operations |
             | npm | `safe npm test` | npm/Node.js (allowed scripts only) |
             | dotnet | `safe dotnet build` | .NET CLI operations |
+            | db | `safe db prisma-status` | Database migrations (blocks --force flags) |
             | env | `safe env check node` | Environment info and tool checks |
             | proxy | `safe proxy gh pr list` | Proxy to gh, az, kubectl, terraform, etc. |
 
@@ -207,6 +225,8 @@ static class MetaCommands
             All commands through `safe` are pre-validated:
             - No destructive git operations (no `--force`, no `reset --hard`, no `checkout .`)
             - No deletion of untracked/uncommitted files (except temp/build directories)
+            - All file operations sandboxed to project directory
+            - Database migration `--force`/`--force-reset`/`--accept-data-loss` blocked
             - Process kills limited to dev tooling (node, dotnet, python, etc.)
             - Docker compose down without `-v` (protects volumes)
             - npm scripts limited to known safe scripts (build, test, lint, etc.)
@@ -218,7 +238,7 @@ static class MetaCommands
             - `safe help <group>` for detailed command list per group
             - `safe help` for full overview
 
-            ### Total commands: {commands.Count} across {groups.Length} groups
+            ### Total commands: {{commands.Count}} across {{groups.Length}} groups
             """;
     }
 

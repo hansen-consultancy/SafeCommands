@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(safe help:*)",
+      "Bash(safe version:*)",
+      "Bash(safe instructions:*)",
+      "Bash(safe git:*)",
+      "Bash(safe file:*)",
+      "Bash(safe process:*)",
+      "Bash(safe docker:*)",
+      "Bash(safe npm:*)",
+      "Bash(safe pnpm:*)",
+      "Bash(safe bun:*)",
+      "Bash(safe dotnet:*)",
+      "Bash(safe db:*)",
+      "Bash(safe env:*)",
+      "Bash(safe proxy:*)"
+    ]
+  }
+}
