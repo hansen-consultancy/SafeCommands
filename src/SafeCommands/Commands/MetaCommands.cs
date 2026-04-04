@@ -218,6 +218,7 @@ static class MetaCommands
             | dotnet | `safe dotnet build` | .NET CLI operations |
             | db | `safe db prisma-status` | Database migrations (blocks --force flags) |
             | env | `safe env check node` | Environment info and tool checks |
+            | generate | `safe generate uuid` | UUIDs, secrets, passwords, hashes, encoding, timestamps |
             | proxy | `safe proxy gh pr list` | Proxy to gh, az, kubectl, terraform, etc. |
 
             ### Safety Guarantees
