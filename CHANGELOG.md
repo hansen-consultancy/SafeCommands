@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-04
+
+### Added
+- STRIDE threat model (`STRIDE.md`) with 15 identified threats across 6 categories
+- `db` command group (22 commands) for Prisma, Drizzle, EF Core, Laravel, Django migrations
+- `pnpm` command group (10 commands) with safer defaults (lifecycle scripts disabled)
+- `bun` command group (6 commands)
+- `safe instructions` now generates a ready-to-use Claude Code allowlist config from the registry
+
+### Fixed
+- **E1 (STRIDE)**: All file operations now sandboxed to project directory via `ValidatePath()`
+- **I1 (STRIDE)**: Environment variables switched from blocklist to allowlist (safe vars only by default, `--all` flag with expanded masking)
+- Git `commit` now blocks `--no-verify` flag (agents must not bypass pre-commit hooks)
+- Git `commit --amend` redirected to `commit-amend` with push-check safety
+- `npm audit-fix` blocks `--force` (prevents breaking major version changes)
+- Terraform `destroy`/`apply` explicitly excluded from proxy allowlist
+- Claude Code allowlist config updated to use correct `Bash(safe <group>:*)` pattern per group
+
+### Changed
+- `npm install` and `bun install` reclassified from SafeWrite to TargetedWrite (supply chain risk)
+- `dotnet tool-install` and `dotnet add-package` reclassified to TargetedWrite
+
 ## [0.1.0] - 2026-04-04
 
 ### Added
