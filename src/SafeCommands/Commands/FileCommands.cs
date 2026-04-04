@@ -29,6 +29,31 @@ static class FileCommands
         "thumbs.db", ".ds_store", "desktop.ini",
     ];
 
+    /// <summary>
+    /// Validates that a resolved path is within the current working directory tree.
+    /// Prevents path traversal attacks (e.g., reading ~/.ssh/authorized_keys).
+    /// </summary>
+    private static bool ValidatePath(string path, string operation)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var projectRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
+
+        // Ensure projectRoot ends with a separator so "/proj" doesn't match "/projEvil"
+        if (!projectRoot.EndsWith(Path.DirectorySeparatorChar))
+            projectRoot += Path.DirectorySeparatorChar;
+
+        if (fullPath.Equals(projectRoot.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
+            || fullPath.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        OutputFormatter.WriteBlocked(operation,
+            $"Path '{fullPath}' is outside the project directory",
+            $"All file operations are sandboxed to: {projectRoot.TrimEnd(Path.DirectorySeparatorChar)}");
+        return false;
+    }
+
     public static void Register(List<CommandDefinition> commands)
     {
         commands.AddRange([
@@ -59,6 +84,7 @@ static class FileCommands
     private static int RunList(string[] args, bool json)
     {
         var path = args.Length > 0 ? args[0] : ".";
+        if (!ValidatePath(path, "file list")) return 1;
         if (!Directory.Exists(path))
         {
             OutputFormatter.WriteError($"Directory not found: {path}");
@@ -96,6 +122,7 @@ static class FileCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file read <path>"); return 1; }
         var path = args[0];
+        if (!ValidatePath(path, "file read")) return 1;
         if (!File.Exists(path))
         {
             OutputFormatter.WriteError($"File not found: {path}");
@@ -123,6 +150,7 @@ static class FileCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file exists <path>"); return 1; }
         var path = args[0];
+        if (!ValidatePath(path, "file exists")) return 1;
         var fileExists = File.Exists(path);
         var dirExists = Directory.Exists(path);
         var exists = fileExists || dirExists;
@@ -140,6 +168,7 @@ static class FileCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file info <path>"); return 1; }
         var path = args[0];
+        if (!ValidatePath(path, "file info")) return 1;
 
         if (File.Exists(path))
         {
@@ -187,6 +216,7 @@ static class FileCommands
         if (inIdx >= 0 && inIdx + 1 < args.Length)
             dir = args[inIdx + 1];
 
+        if (!ValidatePath(dir, "file find")) return 1;
         if (!Directory.Exists(dir))
         {
             OutputFormatter.WriteError($"Directory not found: {dir}");
@@ -223,6 +253,7 @@ static class FileCommands
         if (depthIdx >= 0 && depthIdx + 1 < args.Length)
             int.TryParse(args[depthIdx + 1], out maxDepth);
 
+        if (!ValidatePath(path, "file tree")) return 1;
         if (!Directory.Exists(path))
         {
             OutputFormatter.WriteError($"Directory not found: {path}");
@@ -292,6 +323,7 @@ static class FileCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file mkdir <path>"); return 1; }
         var path = args[0];
+        if (!ValidatePath(path, "file mkdir")) return 1;
         Directory.CreateDirectory(path);
         if (json)
             OutputFormatter.WriteJson(new { created = Path.GetFullPath(path) });
@@ -306,6 +338,8 @@ static class FileCommands
         var src = args[0];
         var dest = args[1];
 
+        if (!ValidatePath(src, "file copy (source)")) return 1;
+        if (!ValidatePath(dest, "file copy (destination)")) return 1;
         if (!File.Exists(src)) { OutputFormatter.WriteError($"Source not found: {src}"); return 1; }
         if (File.Exists(dest))
         {
@@ -326,6 +360,7 @@ static class FileCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file write <path> --content <text>"); return 1; }
         var path = args[0];
+        if (!ValidatePath(path, "file write")) return 1;
 
         if (File.Exists(path))
         {
@@ -361,6 +396,7 @@ static class FileCommands
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file delete-tracked <file>"); return 1; }
         var file = args[0];
 
+        if (!ValidatePath(file, "file delete-tracked")) return 1;
         if (!File.Exists(file)) { OutputFormatter.WriteError($"File not found: {file}"); return 1; }
 
         // Check if file is git-tracked
@@ -395,6 +431,7 @@ static class FileCommands
     private static int RunDeleteTemp(string[] args, bool json)
     {
         var basePath = args.Length > 0 ? args[0] : ".";
+        if (!ValidatePath(basePath, "file delete-temp")) return 1;
         if (!Directory.Exists(basePath))
         {
             OutputFormatter.WriteError($"Directory not found: {basePath}");
@@ -510,6 +547,7 @@ static class FileCommands
         }
 
         var dir = args[inIdx + 1];
+        if (!ValidatePath(dir, "file delete-pattern")) return 1;
         if (!Directory.Exists(dir))
         {
             OutputFormatter.WriteError($"Directory not found: {dir}");
@@ -555,6 +593,8 @@ static class FileCommands
         var src = args[0];
         var dest = args[1];
 
+        if (!ValidatePath(src, "file move (source)")) return 1;
+        if (!ValidatePath(dest, "file move (destination)")) return 1;
         if (!File.Exists(src)) { OutputFormatter.WriteError($"Source not found: {src}"); return 1; }
 
         // Check if file is git-tracked

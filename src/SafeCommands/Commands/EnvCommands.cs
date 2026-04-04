@@ -6,11 +6,37 @@ namespace SafeCommands.Commands;
 
 static class EnvCommands
 {
+    private static readonly HashSet<string> SafeVarPrefixes =
+    [
+        "PATH", "HOME", "HOMEPATH", "HOMEDRIVE", "USERPROFILE", "USER", "USERNAME", "LOGNAME",
+        "SHELL", "TERM", "TERM_PROGRAM", "COLORTERM", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE",
+        "EDITOR", "VISUAL", "PAGER", "BROWSER",
+        "TMPDIR", "TEMP", "TMP",
+        "PWD", "OLDPWD", "SHLVL",
+        "HOSTNAME", "COMPUTERNAME", "PROCESSOR_ARCHITECTURE",
+        "OS", "OSTYPE", "SYSTEMROOT", "WINDIR", "PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES",
+        "DOTNET_ROOT", "DOTNET_HOST_PATH", "NUGET_PACKAGES",
+        "NODE_ENV", "NODE_PATH", "NPM_CONFIG_PREFIX",
+        "GOPATH", "GOROOT", "CARGO_HOME", "RUSTUP_HOME",
+        "JAVA_HOME", "MAVEN_HOME", "GRADLE_HOME",
+        "PYTHONPATH", "VIRTUAL_ENV", "CONDA_PREFIX",
+        "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR",
+        "DISPLAY", "WAYLAND_DISPLAY", "WSL_DISTRO_NAME", "WSLENV",
+        "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL",
+        "SSH_AUTH_SOCK",
+        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+        "CI", "GITHUB_ACTIONS", "GITHUB_REPOSITORY", "GITHUB_REF", "GITHUB_SHA", "GITHUB_WORKFLOW",
+    ];
+
     private static readonly HashSet<string> SecretPatterns =
     [
-        "PASSWORD", "SECRET", "TOKEN", "KEY", "CREDENTIAL",
-        "AUTH", "PRIVATE", "API_KEY", "APIKEY", "CONNECTION_STRING",
-        "CONNECTIONSTRING", "AWS_SECRET", "AZURE_CLIENT_SECRET",
+        "PASSWORD", "PASSWD", "SECRET", "TOKEN", "KEY", "CREDENTIAL", "AUTH",
+        "PRIVATE", "API_KEY", "APIKEY", "CONNECTION_STRING", "CONNECTIONSTRING",
+        "AWS_SECRET", "AZURE_CLIENT_SECRET", "SIGNING", "WEBHOOK", "STRIPE",
+        "OPENAI", "ANTHROPIC", "JWT", "BEARER", "CERTIFICATE", "CERT",
+        "ENCRYPTION", "DECRYPT", "MASTER", "ROOT_PASSWORD", "DB_PASS",
+        "ACCESS_KEY", "SECRET_KEY", "CLIENT_SECRET", "GITHUB_TOKEN",
+        "NPM_TOKEN", "NUGET_API", "PYPI_TOKEN", "DOCKER_PASSWORD",
     ];
 
     public static void Register(List<CommandDefinition> commands)
@@ -20,7 +46,7 @@ static class EnvCommands
             new("env", "path", "Show PATH entries", "safe env path", SafetyLevel.ReadOnly, RunPath),
             new("env", "check", "Check if a tool is available", "safe env check <tool>", SafetyLevel.ReadOnly, RunCheck),
             new("env", "which", "Show tool location", "safe env which <tool>", SafetyLevel.ReadOnly, RunWhich),
-            new("env", "vars", "Show environment variables (secrets filtered)", "safe env vars [<filter>]", SafetyLevel.ReadOnly, RunVars),
+            new("env", "vars", "Show environment variables (safe vars only, use --all for full list with masking)", "safe env vars [--all] [<filter>]", SafetyLevel.ReadOnly, RunVars),
         ]);
     }
 
@@ -116,9 +142,24 @@ static class EnvCommands
         return code == 0 ? 0 : 1;
     }
 
+    private static bool IsSafeVar(string key)
+    {
+        var upper = key.ToUpperInvariant();
+        return SafeVarPrefixes.Any(p => upper == p || upper.StartsWith(p + "_") || upper.StartsWith(p + "("));
+    }
+
+    private static bool IsSecretVar(string key)
+    {
+        var upper = key.ToUpperInvariant();
+        return SecretPatterns.Any(p => upper.Contains(p));
+    }
+
     private static int RunVars(string[] args, bool json)
     {
-        var filter = args.Length > 0 ? args[0] : null;
+        var showAll = args.Contains("--all", StringComparer.OrdinalIgnoreCase);
+        var remaining = args.Where(a => !a.Equals("--all", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var filter = remaining.Length > 0 ? remaining[0] : null;
+
         var vars = Environment.GetEnvironmentVariables();
         var entries = new Dictionary<string, string>();
 
@@ -130,12 +171,24 @@ static class EnvCommands
             if (filter != null && !key.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Mask potential secrets
-            if (SecretPatterns.Any(p => key.ToUpperInvariant().Contains(p)) && !string.IsNullOrEmpty(value))
-                value = "***masked***";
+            if (showAll)
+            {
+                // Show all variables but mask secret-like ones
+                if (IsSecretVar(key) && !string.IsNullOrEmpty(value))
+                    value = "***masked***";
+            }
+            else
+            {
+                // Only show known-safe variables
+                if (!IsSafeVar(key))
+                    continue;
+            }
 
             entries[key] = value;
         }
+
+        if (showAll && !json)
+            Console.WriteLine("WARNING: Showing all variables with secret values masked. Some secrets may still leak through unusual naming.");
 
         if (json)
             OutputFormatter.WriteJson(entries);
