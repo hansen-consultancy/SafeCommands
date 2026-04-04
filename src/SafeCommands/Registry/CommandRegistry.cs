@@ -21,6 +21,7 @@ static class CommandRegistry
         DbCommands.Register(_commands);
         EnvCommands.Register(_commands);
         ProxyCommands.Register(_commands);
+        GenerateCommands.Register(_commands);
     }
 
     public static CommandDefinition? Find(string group, string name)
