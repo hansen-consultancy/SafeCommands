@@ -1,5 +1,7 @@
 # SafeCommands
 
+![SafeCommands Logo](https://raw.githubusercontent.com/hansen-consultancy/SafeCommands/main/logo.png)
+
 [![NuGet version](https://img.shields.io/nuget/v/HC.SafeCommands.svg)](https://www.nuget.org/packages/HC.SafeCommands/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
