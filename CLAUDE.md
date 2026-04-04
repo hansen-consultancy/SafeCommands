@@ -33,7 +33,7 @@ dotnet tool install --global --add-source ./nupkg HC.SafeCommands
 ## Architecture
 
 - **CommandRegistry** holds all command definitions (immutable, built-in)
-- Each command group (git, file, docker, etc.) registers its commands in a static `Register()` method
+- Each command group (git, file, docker, generate, etc.) registers its commands in a static `Register()` method
 - **ProcessRunner** handles cross-platform process execution via `Process.Start()` with `ArgumentList` (no shell interpretation)
 - **OutputFormatter** provides human and JSON (`--json`) output modes
 - Safety levels: `ReadOnly`, `SafeWrite`, `TargetedWrite` (with pre-validation)

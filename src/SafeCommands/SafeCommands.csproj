@@ -9,7 +9,7 @@
     <PackAsTool>True</PackAsTool>
     <ToolCommandName>safe</ToolCommandName>
     <PackageOutputPath>./nupkg</PackageOutputPath>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <Description>Safe command gateway for AI coding agents - pre-validated CLI operations without approval overhead</Description>
     <Authors>Hansen Consultancy</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

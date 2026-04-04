@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-04
+
+### Added
+- `generate` command group (14 commands) for standard value generation without throwaway scripts
+  - `uuid` — v4 (default), v3/v5 (namespaced MD5/SHA1), v7 (time-ordered)
+  - `secret` — cryptographic random base64 or hex (configurable length)
+  - `password` — random alphanumeric with optional special characters
+  - `hash` — SHA256/SHA384/SHA512/MD5 hash of a string
+  - `hash-file` — hash a file's contents (path-sandboxed to project directory)
+  - `random-bytes` — cryptographic random bytes in hex or base64
+  - `timestamp` — ISO 8601, Unix seconds, or Unix milliseconds
+  - `nanoid` — short URL-safe IDs with custom length/alphabet
+  - `base64-encode` / `base64-decode` — base64 string encoding
+  - `url-encode` / `url-decode` — percent-encoding for URLs
+  - `jwt-decode` — decode JWT header and payload (no verification)
+  - `slug` — convert text to URL-safe slugs
+
 ## [0.2.0] - 2026-04-04
 
 ### Added

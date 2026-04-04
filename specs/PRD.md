@@ -77,6 +77,7 @@ SafeCommands/
 │       │   ├── NpmCommands.cs
 │       │   ├── DotnetCommands.cs
 │       │   ├── EnvCommands.cs
+│       │   ├── GenerateCommands.cs
 │       │   ├── ProxyCommand.cs
 │       │   └── MetaCommands.cs
 │       └── Configuration/
@@ -220,6 +221,27 @@ Safe file system operations:
 | `safe env check <tool>` | Check if tool is available (with version) | Read-only |
 | `safe env which <tool>` | Show tool location | Read-only |
 | `safe env vars [filter]` | Show environment variables (filters secrets) | Read-only, sanitized |
+
+### Generate Commands (`safe generate <command>`)
+
+Pure-computation commands for standard value generation. All read-only, no external tool dependencies.
+
+| Command | Description | Safety Notes |
+|---------|-------------|--------------|
+| `safe generate uuid` | Generate UUID v4 (default) | Read-only. `--v3`/`--v5` with `--namespace`/`--name`, `--v7` for time-ordered, `--upper` |
+| `safe generate secret [--length N]` | Cryptographic random secret | Read-only. Default 32 bytes, base64 or hex encoding |
+| `safe generate password [--length N]` | Random password | Read-only. Default 20 chars, `--special` for special chars, min 8 |
+| `safe generate hash <input>` | Hash a string | Read-only. `--algorithm sha256\|sha384\|sha512\|md5` |
+| `safe generate hash-file <path>` | Hash a file's contents | Read-only. Path sandboxed to project dir |
+| `safe generate random-bytes [--length N]` | Cryptographic random bytes | Read-only. Default 32 bytes, hex or base64 encoding |
+| `safe generate timestamp` | Current timestamp | Read-only. ISO 8601 default, `--unix`, `--unix-ms` |
+| `safe generate nanoid [--length N]` | Short URL-safe ID | Read-only. Default 21 chars, custom `--alphabet` |
+| `safe generate base64-encode <string>` | Encode string to base64 | Read-only |
+| `safe generate base64-decode <string>` | Decode base64 to string | Read-only |
+| `safe generate url-encode <string>` | Percent-encode for URLs | Read-only |
+| `safe generate url-decode <string>` | Decode percent-encoded string | Read-only |
+| `safe generate jwt-decode <token>` | Decode JWT header and payload | Read-only. No signature verification |
+| `safe generate slug <string>` | Convert to URL-safe slug | Read-only. Lowercase, hyphens, strip special chars |
 
 ### Proxy Commands (`safe proxy <tool> <args...>`)
 

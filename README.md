@@ -5,7 +5,7 @@
 [![NuGet version](https://img.shields.io/nuget/v/HC.SafeCommands.svg)](https://www.nuget.org/packages/HC.SafeCommands/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-A safe command gateway CLI for AI coding agents. Provides **146 pre-validated commands** across 11 groups so agents can be allowlisted on `safe` without per-command approval overhead.
+A safe command gateway CLI for AI coding agents. Provides **160 pre-validated commands** across 12 groups so agents can be allowlisted on `safe` without per-command approval overhead.
 
 ## Why?
 
@@ -44,6 +44,8 @@ safe dotnet build             # Build project
 safe dotnet test              # Run tests
 safe file delete-temp         # Clean bin/obj/node_modules/etc.
 safe process kill-port 3000   # Kill process on port
+safe generate uuid             # Generate a v4 UUID
+safe generate secret           # Crypto-random base64 secret
 safe help git                 # Show all git commands with safety levels
 ```
 
@@ -61,6 +63,7 @@ safe help git                 # Show all git commands with safety levels
 | **dotnet** | 18 | .NET CLI (build, test, restore, publish, format, etc.) |
 | **db** | 22 | Database migrations - Prisma, Drizzle, EF Core, Laravel, Django (blocks all --force flags) |
 | **env** | 5 | Environment info, tool checks, PATH (secrets masked) |
+| **generate** | 14 | UUIDs, secrets, passwords, hashes, timestamps, nanoids, encoding, JWT decode, slugs |
 | **proxy** | 9 | Proxy to gh, az, kubectl, terraform, curl, cargo, pip, make |
 
 ## Safety Levels
@@ -159,6 +162,7 @@ Then allowlist all groups in `.claude/settings.local.json`:
       "Bash(safe dotnet:*)",
       "Bash(safe db:*)",
       "Bash(safe env:*)",
+      "Bash(safe generate:*)",
       "Bash(safe proxy:*)"
     ]
   }
