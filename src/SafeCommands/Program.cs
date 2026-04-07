@@ -13,9 +13,26 @@ if (cliArgs.Length == 0)
     return MetaCommands.RunHelp([], false);
 }
 
-// Check for --json flag and remove it from args
-var jsonOutput = cliArgs.Contains("--json");
-cliArgs = cliArgs.Where(a => a != "--json").ToArray();
+// Check for --json flag and remove it from args.
+// For proxy commands, only strip --json from before "proxy" to avoid
+// removing --json flags meant for the proxied tool (e.g., gh --json fields).
+var jsonOutput = false;
+var proxyIdx = Array.FindIndex(cliArgs, a => a.Equals("proxy", StringComparison.OrdinalIgnoreCase));
+
+if (proxyIdx >= 0)
+{
+    for (var i = 0; i < proxyIdx; i++)
+    {
+        if (cliArgs[i] == "--json") { jsonOutput = true; break; }
+    }
+    cliArgs = cliArgs.Take(proxyIdx).Where(a => a != "--json")
+        .Concat(cliArgs.Skip(proxyIdx)).ToArray();
+}
+else
+{
+    jsonOutput = cliArgs.Contains("--json");
+    cliArgs = cliArgs.Where(a => a != "--json").ToArray();
+}
 
 // Handle meta commands
 var first = cliArgs[0].ToLowerInvariant();
