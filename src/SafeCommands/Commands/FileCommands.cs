@@ -71,11 +71,11 @@ static class FileCommands
             new("file", "write", "Write to new file (no overwrite)", "safe file write <path> --content <text>", SafetyLevel.SafeWrite, RunWrite),
 
             // Targeted writes
-            new("file", "delete-tracked", "Delete a git-tracked file", "safe file delete-tracked <file>", SafetyLevel.TargetedWrite, RunDeleteTracked),
-            new("file", "delete-temp", "Delete temp/cache/build files", "safe file delete-temp [<path>]", SafetyLevel.TargetedWrite, RunDeleteTemp),
-            new("file", "delete-locks", "Delete lock files", "safe file delete-locks", SafetyLevel.TargetedWrite, RunDeleteLocks),
-            new("file", "delete-pattern", "Delete files matching pattern in safe dirs", "safe file delete-pattern <glob> --in <dir>", SafetyLevel.TargetedWrite, RunDeletePattern),
-            new("file", "move", "Move/rename git-tracked file", "safe file move <src> <dest>", SafetyLevel.TargetedWrite, RunMove),
+            new("file", "delete-tracked", "Delete a git-tracked file", "safe file delete-tracked <file>", SafetyLevel.CheckedWrite, RunDeleteTracked),
+            new("file", "delete-temp", "Delete temp/cache/build files", "safe file delete-temp [<path>]", SafetyLevel.CheckedWrite, RunDeleteTemp),
+            new("file", "delete-locks", "Delete lock files", "safe file delete-locks", SafetyLevel.CheckedWrite, RunDeleteLocks),
+            new("file", "delete-pattern", "Delete files matching pattern in safe dirs", "safe file delete-pattern <glob> --in <dir>", SafetyLevel.CheckedWrite, RunDeletePattern),
+            new("file", "move", "Move/rename git-tracked file", "safe file move <src> <dest>", SafetyLevel.CheckedWrite, RunMove),
         ]);
     }
 

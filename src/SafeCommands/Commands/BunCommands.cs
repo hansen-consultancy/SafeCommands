@@ -22,7 +22,7 @@ static class BunCommands
             new("bun", "pm-ls", "List installed packages", "safe bun pm-ls", SafetyLevel.ReadOnly, RunPmLs),
 
             // Targeted writes - bun install runs postinstall scripts
-            new("bun", "install", "Install dependencies (runs lifecycle scripts!)", "safe bun install [--ignore-scripts]", SafetyLevel.TargetedWrite, RunInstall),
+            new("bun", "install", "Install dependencies (runs lifecycle scripts!)", "safe bun install [--ignore-scripts]", SafetyLevel.CheckedWrite, RunInstall),
 
             // Safe writes
             new("bun", "run", "Run package script (allowed list)", "safe bun run <script>", SafetyLevel.SafeWrite, RunScript),

@@ -42,8 +42,8 @@ static class DbCommands
             new("db", "prisma-generate", "Generate Prisma client", "safe db prisma-generate", SafetyLevel.SafeWrite, RunPrismaGenerate),
             new("db", "prisma-format", "Format Prisma schema", "safe db prisma-format", SafetyLevel.SafeWrite, RunPrismaFormat),
             new("db", "prisma-validate", "Validate Prisma schema", "safe db prisma-validate", SafetyLevel.ReadOnly, RunPrismaValidate),
-            new("db", "prisma-migrate-dev", "Create new migration (dev only, no --force)", "safe db prisma-migrate-dev --name <name>", SafetyLevel.TargetedWrite, RunPrismaMigrateDev),
-            new("db", "prisma-migrate-deploy", "Apply pending migrations", "safe db prisma-migrate-deploy", SafetyLevel.TargetedWrite, RunPrismaMigrateDeploy),
+            new("db", "prisma-migrate-dev", "Create new migration (dev only, no --force)", "safe db prisma-migrate-dev --name <name>", SafetyLevel.CheckedWrite, RunPrismaMigrateDev),
+            new("db", "prisma-migrate-deploy", "Apply pending migrations", "safe db prisma-migrate-deploy", SafetyLevel.CheckedWrite, RunPrismaMigrateDeploy),
             new("db", "prisma-db-pull", "Pull schema from database", "safe db prisma-db-pull", SafetyLevel.SafeWrite, RunPrismaDbPull),
             new("db", "prisma-db-seed", "Run database seed", "safe db prisma-db-seed", SafetyLevel.SafeWrite, RunPrismaDbSeed),
 
@@ -53,21 +53,21 @@ static class DbCommands
 
             // Drizzle - Safe writes
             new("db", "drizzle-generate", "Generate Drizzle migration", "safe db drizzle-generate", SafetyLevel.SafeWrite, RunDrizzleGenerate),
-            new("db", "drizzle-migrate", "Apply Drizzle migrations", "safe db drizzle-migrate", SafetyLevel.TargetedWrite, RunDrizzleMigrate),
+            new("db", "drizzle-migrate", "Apply Drizzle migrations", "safe db drizzle-migrate", SafetyLevel.CheckedWrite, RunDrizzleMigrate),
 
             // EF Core
             new("db", "ef-migrations-list", "List EF Core migrations", "safe db ef-migrations-list", SafetyLevel.ReadOnly, RunEfMigrationsList),
             new("db", "ef-migrations-add", "Add new EF Core migration", "safe db ef-migrations-add <name>", SafetyLevel.SafeWrite, RunEfMigrationsAdd),
-            new("db", "ef-database-update", "Apply EF Core migrations", "safe db ef-database-update", SafetyLevel.TargetedWrite, RunEfDatabaseUpdate),
+            new("db", "ef-database-update", "Apply EF Core migrations", "safe db ef-database-update", SafetyLevel.CheckedWrite, RunEfDatabaseUpdate),
             new("db", "ef-migrations-script", "Generate SQL script from migrations", "safe db ef-migrations-script", SafetyLevel.ReadOnly, RunEfMigrationsScript),
 
             // Laravel / Artisan
             new("db", "artisan-migrate-status", "Show Laravel migration status", "safe db artisan-migrate-status", SafetyLevel.ReadOnly, RunArtisanMigrateStatus),
-            new("db", "artisan-migrate", "Run Laravel migrations (no fresh/reset/rollback)", "safe db artisan-migrate", SafetyLevel.TargetedWrite, RunArtisanMigrate),
+            new("db", "artisan-migrate", "Run Laravel migrations (no fresh/reset/rollback)", "safe db artisan-migrate", SafetyLevel.CheckedWrite, RunArtisanMigrate),
 
             // Django
             new("db", "django-showmigrations", "Show Django migration status", "safe db django-showmigrations", SafetyLevel.ReadOnly, RunDjangoShowMigrations),
-            new("db", "django-migrate", "Apply Django migrations", "safe db django-migrate", SafetyLevel.TargetedWrite, RunDjangoMigrate),
+            new("db", "django-migrate", "Apply Django migrations", "safe db django-migrate", SafetyLevel.CheckedWrite, RunDjangoMigrate),
             new("db", "django-makemigrations", "Create Django migrations", "safe db django-makemigrations", SafetyLevel.SafeWrite, RunDjangoMakeMigrations),
         ]);
     }

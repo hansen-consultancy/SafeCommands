@@ -122,7 +122,7 @@ static class ProxyCommands
     public static void Register(List<CommandDefinition> commands)
     {
         commands.Add(new("proxy", "run", "Run a command through the safety proxy",
-            "safe proxy <tool> <args...>", SafetyLevel.TargetedWrite, RunProxy));
+            "safe proxy <tool> <args...>", SafetyLevel.CheckedWrite, RunProxy));
 
         // Register convenience aliases for common proxy patterns
         commands.Add(new("proxy", "curl", "HTTP GET request via curl",

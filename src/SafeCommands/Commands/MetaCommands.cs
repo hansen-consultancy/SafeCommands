@@ -110,7 +110,7 @@ static class MetaCommands
             {
                 SafetyLevel.ReadOnly => "green",
                 SafetyLevel.SafeWrite => "yellow",
-                SafetyLevel.TargetedWrite => "red",
+                SafetyLevel.CheckedWrite => "red",
                 _ => "white"
             };
 

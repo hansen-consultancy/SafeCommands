@@ -24,12 +24,12 @@ static class NpmCommands
             new("npm", "view", "View package info", "safe npm view <package>", SafetyLevel.ReadOnly, RunView),
 
             // Targeted writes - install runs postinstall scripts (supply chain risk)
-            new("npm", "install", "Install dependencies (runs postinstall scripts!)", "safe npm install [<package>] [--ignore-scripts]", SafetyLevel.TargetedWrite, RunInstall),
-            new("npm", "ci", "Clean install from lockfile (runs postinstall scripts!)", "safe npm ci [--ignore-scripts]", SafetyLevel.TargetedWrite, RunCi),
+            new("npm", "install", "Install dependencies (runs postinstall scripts!)", "safe npm install [<package>] [--ignore-scripts]", SafetyLevel.CheckedWrite, RunInstall),
+            new("npm", "ci", "Clean install from lockfile (runs postinstall scripts!)", "safe npm ci [--ignore-scripts]", SafetyLevel.CheckedWrite, RunCi),
             new("npm", "run", "Run package script (allowed list)", "safe npm run <script>", SafetyLevel.SafeWrite, RunScript),
             new("npm", "test", "Run tests", "safe npm test", SafetyLevel.SafeWrite, RunTest),
             new("npm", "build", "Build project", "safe npm build", SafetyLevel.SafeWrite, RunBuild),
-            new("npm", "audit-fix", "Fix audit issues (no --force)", "safe npm audit-fix", SafetyLevel.TargetedWrite, RunAuditFix),
+            new("npm", "audit-fix", "Fix audit issues (no --force)", "safe npm audit-fix", SafetyLevel.CheckedWrite, RunAuditFix),
             new("npm", "cache-clean", "Clean npm cache", "safe npm cache-clean", SafetyLevel.SafeWrite, RunCacheClean),
             new("npm", "dedupe", "Deduplicate dependencies", "safe npm dedupe", SafetyLevel.SafeWrite, RunDedupe),
         ]);

@@ -31,10 +31,10 @@ static class DockerCommands
             new("docker", "compose-pull", "Pull compose images", "safe docker compose-pull [<service>]", SafetyLevel.SafeWrite, RunComposePull),
 
             // Targeted writes
-            new("docker", "stop", "Stop a running container", "safe docker stop <container>", SafetyLevel.TargetedWrite, RunStop),
-            new("docker", "start", "Start a stopped container", "safe docker start <container>", SafetyLevel.TargetedWrite, RunStart),
-            new("docker", "restart", "Restart a container", "safe docker restart <container>", SafetyLevel.TargetedWrite, RunRestart),
-            new("docker", "compose-down", "Stop compose services (no -v)", "safe docker compose-down", SafetyLevel.TargetedWrite, RunComposeDown),
+            new("docker", "stop", "Stop a running container", "safe docker stop <container>", SafetyLevel.CheckedWrite, RunStop),
+            new("docker", "start", "Start a stopped container", "safe docker start <container>", SafetyLevel.CheckedWrite, RunStart),
+            new("docker", "restart", "Restart a container", "safe docker restart <container>", SafetyLevel.CheckedWrite, RunRestart),
+            new("docker", "compose-down", "Stop compose services (no -v)", "safe docker compose-down", SafetyLevel.CheckedWrite, RunComposeDown),
         ]);
     }
 

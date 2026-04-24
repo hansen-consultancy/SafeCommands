@@ -27,8 +27,8 @@ static class ProcessCommands
             new("process", "list", "List running processes", "safe process list [--filter <name>]", SafetyLevel.ReadOnly, RunList),
             new("process", "find", "Find process by name", "safe process find <name>", SafetyLevel.ReadOnly, RunFind),
             new("process", "ports", "Show listening ports", "safe process ports", SafetyLevel.ReadOnly, RunPorts),
-            new("process", "kill-port", "Kill process on specific port", "safe process kill-port <port>", SafetyLevel.TargetedWrite, RunKillPort),
-            new("process", "kill-name", "Kill process by name (dev tools only)", "safe process kill-name <name>", SafetyLevel.TargetedWrite, RunKillName),
+            new("process", "kill-port", "Kill process on specific port", "safe process kill-port <port>", SafetyLevel.CheckedWrite, RunKillPort),
+            new("process", "kill-name", "Kill process by name (dev tools only)", "safe process kill-name <name>", SafetyLevel.CheckedWrite, RunKillName),
         ]);
     }
 
