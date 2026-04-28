@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-28
+
+### Fixed
+- `proxy` commands now preserve `--json` flag in forwarded args (was stripped before reaching the proxied tool's invocation context)
+- `safe instructions` quick-reference table now includes the `generate` group
+
+### Changed
+- Internal rename: `SafetyLevel.TargetedWrite` → `CheckedWrite` to match the existing user-visible `checked-write` label. JSON output and help text unchanged.
+
+### Documentation
+- Added `UBIQUITOUS_LANGUAGE.md` glossary anchoring canonical domain terms (Agent vs Operator, Command Definition, Built-in Allowlist, Proxy Command, Safety Level/Rule/Guarantee)
+- Updated `STRIDE.md` to cover the `generate` command group
+
 ## [0.3.0] - 2026-04-04
 
 ### Added
