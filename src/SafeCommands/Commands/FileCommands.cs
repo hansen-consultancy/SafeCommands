@@ -62,6 +62,7 @@ static class FileCommands
             new("file", "read", "Read file content", "safe file read <path> [--lines <n>]", SafetyLevel.ReadOnly, RunRead),
             new("file", "exists", "Check if file or directory exists", "safe file exists <path>", SafetyLevel.ReadOnly, RunExists),
             new("file", "info", "Show file metadata", "safe file info <path>", SafetyLevel.ReadOnly, RunInfo),
+            new("file", "count", "Count lines/words/chars in a file", "safe file count <path> [--lines|--words|--chars]", SafetyLevel.ReadOnly, RunCount),
             new("file", "find", "Find files by pattern", "safe file find <pattern> [--in <dir>]", SafetyLevel.ReadOnly, RunFind),
             new("file", "tree", "Show directory tree", "safe file tree [<path>] [--depth <n>]", SafetyLevel.ReadOnly, RunTree),
 
@@ -204,6 +205,42 @@ static class FileCommands
 
         OutputFormatter.WriteError($"Not found: {path}");
         return 1;
+    }
+
+    private static int RunCount(string[] args, bool json)
+    {
+        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file count <path> [--lines|--words|--chars]"); return 1; }
+        var path = args[0];
+        if (!ValidatePath(path, "file count")) return 1;
+        if (!File.Exists(path)) { OutputFormatter.WriteError($"File not found: {path}"); return 1; }
+
+        var wantLines = args.Contains("--lines");
+        var wantWords = args.Contains("--words");
+        var wantChars = args.Contains("--chars");
+        if (!wantLines && !wantWords && !wantChars) wantLines = true;
+
+        var content = File.ReadAllText(path);
+        long lines = content.Count(c => c == '\n');
+        long words = content.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+        long chars = content.Length;
+
+        if (json)
+        {
+            var result = new Dictionary<string, object> { ["path"] = Path.GetFullPath(path) };
+            if (wantLines) result["lines"] = lines;
+            if (wantWords) result["words"] = words;
+            if (wantChars) result["chars"] = chars;
+            OutputFormatter.WriteJson(result);
+        }
+        else
+        {
+            var parts = new List<string>();
+            if (wantLines) parts.Add($"{lines,8} lines");
+            if (wantWords) parts.Add($"{words,8} words");
+            if (wantChars) parts.Add($"{chars,8} chars");
+            Console.WriteLine($"{string.Join("  ", parts)}  {path}");
+        }
+        return 0;
     }
 
     private static int RunFind(string[] args, bool json)

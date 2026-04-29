@@ -134,6 +134,7 @@ Safe file system operations:
 | `safe file read <path>` | Read file content | Read-only |
 | `safe file exists <path>` | Check if file/dir exists | Read-only |
 | `safe file info <path>` | Show file metadata (size, dates) | Read-only |
+| `safe file count <path> [--lines\|--words\|--chars]` | Count lines/words/chars in a file (defaults to lines) | Read-only |
 | `safe file find <pattern> [--in dir]` | Find files by glob pattern | Read-only |
 | `safe file delete-tracked <file>` | Delete git-tracked file with no unstaged changes | Recoverable via git |
 | `safe file delete-temp` | Delete temp/cache files (bin, obj, .tmp, __pycache__) | Build artifacts only |

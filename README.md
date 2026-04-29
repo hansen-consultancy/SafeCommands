@@ -5,7 +5,7 @@
 [![NuGet version](https://img.shields.io/nuget/v/HC.SafeCommands.svg)](https://www.nuget.org/packages/HC.SafeCommands/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-A safe command gateway CLI for AI coding agents. Provides **160 pre-validated commands** across 12 groups so agents can be allowlisted on `safe` without per-command approval overhead.
+A safe command gateway CLI for AI coding agents. Provides **161 pre-validated commands** across 12 groups so agents can be allowlisted on `safe` without per-command approval overhead.
 
 ## Why?
 
@@ -54,7 +54,7 @@ safe help git                 # Show all git commands with safety levels
 | Group | Commands | Description |
 |-------|----------|-------------|
 | **git** | 27 | Git with safety checks (no force push, no hard reset, clean tree required for checkout) |
-| **file** | 14 | File operations (read, delete only tracked files or temp/build dirs) |
+| **file** | 15 | File operations (read, count, delete only tracked files or temp/build dirs) |
 | **process** | 5 | Process management (kill limited to dev tooling only) |
 | **docker** | 18 | Docker & Compose (no volume removal, no system prune) |
 | **npm** | 12 | npm with script allowlist, install warnings for supply chain risk |
