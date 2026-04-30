@@ -137,4 +137,53 @@ public class RendererEnvelopeTests
         Assert.Equal("", stdout.ToString());
         Assert.Equal("", stderr.ToString());
     }
+
+    // ---- Human-mode routing (Spectre AnsiConsole bound to injected writers) ----
+
+    [Fact]
+    public void Error_UnderHumanMode_GoesToStderr_NotStdout()
+    {
+        // CLI convention: errors must reach stderr even in human mode so piping stdout
+        // to a file doesn't swallow the diagnostic.
+        var (r, stdout, stderr) = Make(jsonMode: false);
+
+        r.Error("something failed");
+
+        Assert.Equal("", stdout.ToString());
+        Assert.Contains("something failed", stderr.ToString());
+    }
+
+    [Fact]
+    public void Warning_UnderHumanMode_GoesToInjectedStdout()
+    {
+        // Verifies the AnsiConsole.Create(...) path is wired to the injected writer
+        // rather than the global static AnsiConsole.
+        var (r, stdout, _) = Make(jsonMode: false);
+
+        r.Warning("be careful");
+
+        Assert.Contains("be careful", stdout.ToString());
+    }
+
+    [Fact]
+    public void Blocked_UnderHumanMode_GoesToInjectedStdout()
+    {
+        var (r, stdout, stderr) = Make(jsonMode: false);
+
+        r.Blocked("bun run nope", "not allowed", "try X");
+
+        Assert.Contains("Blocked", stdout.ToString());
+        Assert.Contains("bun run nope", stdout.ToString());
+        Assert.Equal("", stderr.ToString());
+    }
+
+    [Fact]
+    public void Info_UnderHumanMode_GoesToInjectedStdout()
+    {
+        var (r, stdout, _) = Make(jsonMode: false);
+
+        r.Info("hint");
+
+        Assert.Contains("hint", stdout.ToString());
+    }
 }

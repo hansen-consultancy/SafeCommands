@@ -6,12 +6,16 @@ namespace SafeCommands.Infrastructure.Adapters;
 
 /// <summary>
 /// Real <see cref="IRenderer"/> adapter. Reuses <see cref="OutputFormatter.JsonOptions"/> so the
-/// JSON envelope shape is identical to legacy callers. Markup paths delegate to Spectre.
+/// JSON envelope shape is identical to legacy callers. Markup paths route through
+/// per-instance <see cref="IAnsiConsole"/>s bound to the constructor-injected writers, so
+/// tests can capture human-mode output and Error markup goes to stderr (CLI convention).
 /// </summary>
 sealed class ConsoleRenderer : IRenderer
 {
     private readonly TextWriter _stdout;
     private readonly TextWriter _stderr;
+    private readonly IAnsiConsole _outAnsi;
+    private readonly IAnsiConsole _errAnsi;
 
     public bool JsonMode { get; }
 
@@ -20,6 +24,8 @@ sealed class ConsoleRenderer : IRenderer
         JsonMode = jsonMode;
         _stdout = stdout ?? Console.Out;
         _stderr = stderr ?? Console.Error;
+        _outAnsi = AnsiConsole.Create(new AnsiConsoleSettings { Out = new AnsiConsoleOutput(_stdout) });
+        _errAnsi = AnsiConsole.Create(new AnsiConsoleSettings { Out = new AnsiConsoleOutput(_stderr) });
     }
 
     public void Result(ExecResult r)
@@ -31,6 +37,8 @@ sealed class ConsoleRenderer : IRenderer
                 OutputFormatter.JsonOptions));
             return;
         }
+        // ProcessRunner.Run TrimEnds captured stdout/stderr (Infrastructure/ProcessRunner.cs:45),
+        // so WriteLine here adds back exactly one trailing newline — matching 0.3.x behaviour.
         if (!string.IsNullOrEmpty(r.StdOut)) _stdout.WriteLine(r.StdOut);
         if (!string.IsNullOrEmpty(r.StdErr)) _stderr.WriteLine(r.StdErr);
     }
@@ -51,10 +59,10 @@ sealed class ConsoleRenderer : IRenderer
             return;
         }
         // Markup wording mirrors 0.3.x OutputFormatter.WriteBlocked exactly.
-        AnsiConsole.MarkupLine($"[red]Blocked:[/] [yellow]{command.EscapeMarkup()}[/]");
-        AnsiConsole.MarkupLine($"  [dim]Reason:[/] {reason.EscapeMarkup()}");
+        _outAnsi.MarkupLine($"[red]Blocked:[/] [yellow]{command.EscapeMarkup()}[/]");
+        _outAnsi.MarkupLine($"  [dim]Reason:[/] {reason.EscapeMarkup()}");
         if (suggestion != null)
-            AnsiConsole.MarkupLine($"  [dim]Try:[/] [green]{suggestion.EscapeMarkup()}[/]");
+            _outAnsi.MarkupLine($"  [dim]Try:[/] [green]{suggestion.EscapeMarkup()}[/]");
     }
 
     public void Info(string message)
@@ -66,7 +74,7 @@ sealed class ConsoleRenderer : IRenderer
     public void Warning(string message)
     {
         if (JsonMode) return;
-        AnsiConsole.MarkupLine($"[yellow]Warning:[/] {message.EscapeMarkup()}");
+        _outAnsi.MarkupLine($"[yellow]Warning:[/] {message.EscapeMarkup()}");
     }
 
     public void Error(string message)
@@ -76,6 +84,7 @@ sealed class ConsoleRenderer : IRenderer
             _stderr.WriteLine(message);
             return;
         }
-        AnsiConsole.MarkupLine($"[red]Error:[/] {message.EscapeMarkup()}");
+        // CLI convention: errors to stderr even in human mode.
+        _errAnsi.MarkupLine($"[red]Error:[/] {message.EscapeMarkup()}");
     }
 }

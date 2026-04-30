@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Previously, blocked outputs always rendered as Spectre markup regardless of `--json`. This is the start of a per-group rollout: PR #1 lights up `bun` only. The other 11 groups still emit markup under `--json` until each is migrated in subsequent phases. Track progress in [#2](https://github.com/hansen-consultancy/SafeCommands/issues/2).
 - `BunCommands` migrated to the new direct-port handler shape. No CLI surface change for `bun` users beyond the blocked-envelope contract above.
 - `CommandDefinition.Handler` is now `Func<Ports, string[], int>`. A legacy constructor overload auto-adapts the existing `Func<string[], bool, int>` handler shape so unmigrated command groups required no source changes.
+- **Error messages now route to stderr in human mode** (CLI convention). Previously, `OutputFormatter.WriteError` rendered Spectre markup to stdout, so piping `safe ... > file.log` would swallow error diagnostics. JSON-mode error output already went to stderr; this aligns the human path. Affects all groups (the dispatcher's `Unknown command: …` / `Unknown group: …` errors, and any handler calling `IRenderer.Error`).
 
 ### Internal
 - `OutputFormatter.JsonOptions` is now `internal` (was `private`) so adapters share one source of truth for envelope shape.
