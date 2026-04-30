@@ -1,5 +1,7 @@
 using SafeCommands.Commands;
 using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Adapters;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
 
 // Initialize the command registry
@@ -34,7 +36,10 @@ else
     cliArgs = cliArgs.Where(a => a != "--json").ToArray();
 }
 
-// Handle meta commands
+// Wire infrastructure ports once. From here every handler receives the same Ports record.
+var ports = new Ports(new ProcessExecutor(), new ConsoleRenderer(jsonOutput));
+
+// Handle meta commands (still on legacy signature — not migrated in PR #1)
 var first = cliArgs[0].ToLowerInvariant();
 
 switch (first)
@@ -52,7 +57,7 @@ switch (first)
         // Handle "safe proxy <tool> <args...>"
         var proxyCmd = CommandRegistry.Find("proxy", "run");
         if (proxyCmd != null)
-            return proxyCmd.Handler(cliArgs.Skip(1).ToArray(), jsonOutput);
+            return proxyCmd.Handler(ports, cliArgs.Skip(1).ToArray());
         break;
 }
 
@@ -63,8 +68,8 @@ if (cliArgs.Length < 2)
     if (CommandRegistry.FindByGroup(first).Any())
         return MetaCommands.RunHelp([first], jsonOutput);
 
-    OutputFormatter.WriteError($"Unknown command: {first}");
-    Console.WriteLine("Run 'safe help' for available commands.");
+    ports.Render.Error($"Unknown command: {first}");
+    ports.Render.Info("Run 'safe help' for available commands.");
     return 1;
 }
 
@@ -80,16 +85,16 @@ if (cmd == null)
     // Check if the group exists at all
     if (!CommandRegistry.FindByGroup(group).Any())
     {
-        OutputFormatter.WriteError($"Unknown group: {group}");
-        Console.WriteLine($"Available groups: {string.Join(", ", CommandRegistry.Groups.OrderBy(g => g))}");
-        Console.WriteLine("Run 'safe help' for details.");
+        ports.Render.Error($"Unknown group: {group}");
+        ports.Render.Info($"Available groups: {string.Join(", ", CommandRegistry.Groups.OrderBy(g => g))}");
+        ports.Render.Info("Run 'safe help' for details.");
     }
     else
     {
-        OutputFormatter.WriteError($"Unknown command: {group} {command}");
-        Console.WriteLine($"Available {group} commands:");
+        ports.Render.Error($"Unknown command: {group} {command}");
+        ports.Render.Info($"Available {group} commands:");
         foreach (var c in CommandRegistry.FindByGroup(group))
-            Console.WriteLine($"  safe {c.Group} {c.Name,-20} {c.Description}");
+            ports.Render.Info($"  safe {c.Group} {c.Name,-20} {c.Description}");
     }
     return 1;
 }
@@ -97,12 +102,12 @@ if (cmd == null)
 // Execute the command
 try
 {
-    return cmd.Handler(commandArgs, jsonOutput);
+    return cmd.Handler(ports, commandArgs);
 }
 catch (Exception ex)
 {
-    OutputFormatter.WriteError($"Command failed: {ex.Message}");
+    ports.Render.Error($"Command failed: {ex.Message}");
     if (jsonOutput)
-        OutputFormatter.WriteJson(new { error = true, message = ex.Message, command = cmd.FullName });
+        ports.Render.Json(new { error = true, message = ex.Message, command = cmd.FullName });
     return 1;
 }

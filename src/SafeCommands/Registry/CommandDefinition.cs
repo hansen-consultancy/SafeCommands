@@ -1,3 +1,5 @@
+using SafeCommands.Infrastructure.Ports;
+
 namespace SafeCommands.Registry;
 
 /// <summary>
@@ -30,9 +32,25 @@ record CommandDefinition(
     string Description,
     string Usage,
     SafetyLevel Safety,
-    Func<string[], bool, int> Handler  // (args, jsonOutput) => exitCode
+    Func<Ports, string[], int> Handler  // (ports, args) => exitCode
 )
 {
+    /// <summary>
+    /// Migration shim: auto-adapts legacy handlers with the
+    /// <c>(string[] args, bool jsonMode) =&gt; int</c> signature so unmigrated command
+    /// groups need no source changes during the staged refactor (Issue #2).
+    /// </summary>
+    public CommandDefinition(
+        string group,
+        string name,
+        string description,
+        string usage,
+        SafetyLevel safety,
+        Func<string[], bool, int> legacyHandler)
+        : this(group, name, description, usage, safety,
+               (p, args) => legacyHandler(args, p.Render.JsonMode))
+    { }
+
     public string FullName => $"{Group} {Name}";
 
     public string SafetyLabel => Safety switch

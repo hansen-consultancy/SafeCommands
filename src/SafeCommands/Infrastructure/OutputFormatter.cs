@@ -6,7 +6,7 @@ namespace SafeCommands.Infrastructure;
 
 static class OutputFormatter
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    internal static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
