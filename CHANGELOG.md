@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-30
+
+### Added
+- Internal ports-and-adapters seam (PR #1 of [#2](https://github.com/hansen-consultancy/SafeCommands/issues/2)):
+  - `IExecutor` port abstracts external process invocation; real `ProcessExecutor` adapter wraps `ProcessRunner`.
+  - `IRenderer` port abstracts user-facing output; real `ConsoleRenderer` adapter wraps `OutputFormatter` and Spectre.
+  - `Ports` record threads both through every command handler.
+  - `Run.Tool` / `Run.Bun` sugar collapses the previously-repeated `(args, json)` boilerplate into one-liners for passthrough commands.
+  - `SafetyPolicy` (in namespace `SafeCommands.Safety`) holds composable rules; first rule shipped: `AllowOnlyScripts`.
+- xUnit test project at `tests/SafeCommands.Tests/` with `FakeExecutor` / `FakeRenderer` fakes. Initial suite: 30 tests covering `BunCommands` handlers, `Policy` evaluation, and the JSON envelope contract.
+- `SafeCommands.slnx` solution at the repo root.
+
+### Changed
+- **(Behaviour change, scoped to `bun` group)** Under `--json`, blocked commands now emit a structured envelope:
+  ```json
+  { "blocked": true, "command": "...", "reason": "...", "suggestion": "..." }
+  ```
+  Previously, blocked outputs always rendered as Spectre markup regardless of `--json`. This is the start of a per-group rollout: PR #1 lights up `bun` only. The other 11 groups still emit markup under `--json` until each is migrated in subsequent phases. Track progress in [#2](https://github.com/hansen-consultancy/SafeCommands/issues/2).
+- `BunCommands` migrated to the new direct-port handler shape. No CLI surface change for `bun` users beyond the blocked-envelope contract above.
+- `CommandDefinition.Handler` is now `Func<Ports, string[], int>`. A legacy constructor overload auto-adapts the existing `Func<string[], bool, int>` handler shape so unmigrated command groups required no source changes.
+
+### Internal
+- `OutputFormatter.JsonOptions` is now `internal` (was `private`) so adapters share one source of truth for envelope shape.
+- `InternalsVisibleTo("SafeCommands.Tests")` added to the main project.
+
 ## [0.3.1] - 2026-04-28
 
 ### Fixed

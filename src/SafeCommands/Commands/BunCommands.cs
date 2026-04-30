@@ -1,11 +1,13 @@
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
 static class BunCommands
 {
-    private static readonly HashSet<string> AllowedScripts =
+    internal static readonly HashSet<string> AllowedScripts =
     [
         "build", "dev", "start", "test", "lint", "format",
         "typecheck", "check", "compile", "watch", "serve", "preview",
@@ -31,53 +33,35 @@ static class BunCommands
         ]);
     }
 
-    private static int RunBun(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("bun", args);
-        if (json)
-            OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else
-        {
-            OutputFormatter.WritePassthrough(output);
-            OutputFormatter.WritePassthroughError(error);
-        }
-        return code;
-    }
+    internal static int RunOutdated(Ports p, string[] args) => Run.Bun(p, "outdated", args);
+    internal static int RunPmLs(Ports p, string[] args)     => Run.Bun(p, "pm", ["ls", .. args]);
 
-    private static int RunOutdated(string[] args, bool json) => RunBun(["outdated", ..args], json);
-    private static int RunPmLs(string[] args, bool json) => RunBun(["pm", "ls", ..args], json);
-
-    private static int RunInstall(string[] args, bool json)
+    internal static int RunInstall(Ports p, string[] args)
     {
         if (!args.Contains("--ignore-scripts"))
-            OutputFormatter.WriteWarning("bun install runs lifecycle scripts. Add --ignore-scripts for safer installs.");
-        return RunBun(["install", ..args], json);
+            p.Render.Warning("bun install runs lifecycle scripts. Add --ignore-scripts for safer installs.");
+        return Run.Bun(p, "install", args);
     }
 
-    private static int RunScript(string[] args, bool json)
+    internal static int RunScript(Ports p, string[] args)
     {
         if (args.Length == 0)
         {
-            OutputFormatter.WriteError("Usage: safe bun run <script>");
+            p.Render.Error("Usage: safe bun run <script>");
             return 1;
         }
-
-        var script = args[0].ToLowerInvariant();
-        if (!AllowedScripts.Contains(script))
-        {
-            OutputFormatter.WriteBlocked($"bun run {script}",
-                $"Script '{script}' is not in the allowed list",
-                $"Allowed: {string.Join(", ", AllowedScripts.Take(15))}...");
-            return 1;
-        }
-
-        return RunBun(["run", ..args], json);
+        return Run.Bun(p, "run", args, Policy.Default.AllowOnlyScripts(AllowedScripts));
     }
 
-    private static int RunTest(string[] args, bool json) => RunBun(["test", ..args], json);
-    private static int RunBuild(string[] args, bool json)
+    internal static int RunTest(Ports p, string[] args) => Run.Bun(p, "test", args);
+
+    internal static int RunBuild(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe bun build <entrypoint>"); return 1; }
-        return RunBun(["build", ..args], json);
+        if (args.Length == 0)
+        {
+            p.Render.Error("Usage: safe bun build <entrypoint>");
+            return 1;
+        }
+        return Run.Bun(p, "build", args);
     }
 }
