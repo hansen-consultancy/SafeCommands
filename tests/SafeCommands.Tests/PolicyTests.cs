@@ -48,6 +48,26 @@ public class PolicyTests
     }
 
     [Fact]
+    public void AllowOnlyScripts_ShortList_DoesNotAppendTruncationEllipsis()
+    {
+        // Allowed has 3 entries — well under the 15-item display cap. The ellipsis would
+        // mislead users into thinking more scripts exist than they do.
+        var policy = Policy.Default.AllowOnlyScripts(Allowed);
+        var block = Assert.IsType<PolicyResult.Block>(policy.Evaluate(["nope"]));
+        Assert.DoesNotContain("...", block.Suggestion);
+    }
+
+    [Fact]
+    public void AllowOnlyScripts_LongList_AppendsTruncationEllipsis()
+    {
+        // 20 entries > 15-item display cap; the ellipsis signals "more exist".
+        var many = Enumerable.Range(0, 20).Select(i => $"script{i}").ToArray();
+        var policy = Policy.Default.AllowOnlyScripts(many);
+        var block = Assert.IsType<PolicyResult.Block>(policy.Evaluate(["nope"]));
+        Assert.EndsWith("...", block.Suggestion);
+    }
+
+    [Fact]
     public void AllowOnlyScripts_EmptyArgs_Allows()
     {
         // Handler-level error checks (e.g. "Usage: ...") run before policy; policy treats

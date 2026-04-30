@@ -42,6 +42,6 @@ sealed record AllowOnlyScriptsRule(IReadOnlyCollection<string> Allowed) : Rule
         if (Allowed.Contains(script)) return new PolicyResult.Allow();
         return new PolicyResult.Block(
             $"Script '{script}' is not in the allowed list",
-            $"Allowed: {string.Join(", ", Allowed.Take(15))}...");
+            $"Allowed: {string.Join(", ", Allowed.Take(15))}{(Allowed.Count > 15 ? "..." : "")}");
     }
 }

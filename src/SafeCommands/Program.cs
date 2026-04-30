@@ -69,7 +69,7 @@ if (cliArgs.Length < 2)
         return MetaCommands.RunHelp([first], jsonOutput);
 
     ports.Render.Error($"Unknown command: {first}");
-    Console.WriteLine("Run 'safe help' for available commands.");
+    ports.Render.Info("Run 'safe help' for available commands.");
     return 1;
 }
 
@@ -86,15 +86,15 @@ if (cmd == null)
     if (!CommandRegistry.FindByGroup(group).Any())
     {
         ports.Render.Error($"Unknown group: {group}");
-        Console.WriteLine($"Available groups: {string.Join(", ", CommandRegistry.Groups.OrderBy(g => g))}");
-        Console.WriteLine("Run 'safe help' for details.");
+        ports.Render.Info($"Available groups: {string.Join(", ", CommandRegistry.Groups.OrderBy(g => g))}");
+        ports.Render.Info("Run 'safe help' for details.");
     }
     else
     {
         ports.Render.Error($"Unknown command: {group} {command}");
-        Console.WriteLine($"Available {group} commands:");
+        ports.Render.Info($"Available {group} commands:");
         foreach (var c in CommandRegistry.FindByGroup(group))
-            Console.WriteLine($"  safe {c.Group} {c.Name,-20} {c.Description}");
+            ports.Render.Info($"  safe {c.Group} {c.Name,-20} {c.Description}");
     }
     return 1;
 }
