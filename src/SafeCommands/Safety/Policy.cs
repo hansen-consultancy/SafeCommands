@@ -11,6 +11,22 @@ sealed record Policy(IReadOnlyList<Rule> Rules)
     public Policy AllowOnlyScripts(IReadOnlyCollection<string> allowed)
         => this with { Rules = [.. Rules, new AllowOnlyScriptsRule(allowed)] };
 
+    /// <summary>
+    /// Block if any arg matches one of <paramref name="flags"/> exactly (case-insensitive).
+    /// Use for hard-deny lists like <c>--force</c>, <c>-f</c>, <c>--volumes</c>.
+    /// </summary>
+    public Policy DenyFlags(params string[] flags)
+        => this with { Rules = [.. Rules, new DenyFlagsRule(flags)] };
+
+    /// <summary>
+    /// Block if any arg's lowercased text contains one of <paramref name="needles"/>.
+    /// Looser than <see cref="DenyFlags"/>; reach for it only when a single token (e.g.
+    /// <c>migrate:fresh</c>) embeds the deny term. Prefer exact <see cref="DenyFlags"/>
+    /// where possible to avoid surprising matches like <c>--reset-only</c>.
+    /// </summary>
+    public Policy DenyArgsContaining(params string[] needles)
+        => this with { Rules = [.. Rules, new DenyArgsContainingRule(needles)] };
+
     public PolicyResult Evaluate(string[] args)
     {
         foreach (var rule in Rules)
@@ -43,5 +59,44 @@ sealed record AllowOnlyScriptsRule(IReadOnlyCollection<string> Allowed) : Rule
         return new PolicyResult.Block(
             $"Script '{script}' is not in the allowed list",
             $"Allowed: {string.Join(", ", Allowed.Take(15))}{(Allowed.Count > 15 ? "..." : "")}");
+    }
+}
+
+sealed record DenyFlagsRule(IReadOnlyCollection<string> Flags) : Rule
+{
+    public override PolicyResult Evaluate(string[] args)
+    {
+        var deny = Flags.Select(f => f.ToLowerInvariant()).ToHashSet();
+        foreach (var arg in args)
+        {
+            if (deny.Contains(arg.ToLowerInvariant()))
+            {
+                return new PolicyResult.Block(
+                    $"Flag '{arg}' is not allowed",
+                    $"Remove '{arg}' and retry");
+            }
+        }
+        return new PolicyResult.Allow();
+    }
+}
+
+sealed record DenyArgsContainingRule(IReadOnlyCollection<string> Needles) : Rule
+{
+    public override PolicyResult Evaluate(string[] args)
+    {
+        foreach (var arg in args)
+        {
+            var lower = arg.ToLowerInvariant();
+            foreach (var needle in Needles)
+            {
+                if (lower.Contains(needle.ToLowerInvariant()))
+                {
+                    return new PolicyResult.Block(
+                        $"Argument '{arg}' contains the disallowed term '{needle}'",
+                        $"Remove '{arg}' and retry");
+                }
+            }
+        }
+        return new PolicyResult.Allow();
     }
 }

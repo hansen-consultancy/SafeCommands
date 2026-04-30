@@ -13,9 +13,22 @@ namespace SafeCommands.Sugar;
 /// </summary>
 static class Run
 {
-    /// <summary>Bare execution + rendering. No policy. Args are passed verbatim to the tool.</summary>
-    public static int Tool(Ports p, string tool, string[] args)
+    /// <summary>
+    /// Execute <paramref name="tool"/> with <paramref name="args"/>, optionally gated by a
+    /// <see cref="Policy"/>. On <see cref="PolicyResult.Block"/>, emits the structured Blocked
+    /// envelope and returns 1 without spawning the tool. On Allow, runs the tool, renders its
+    /// Result envelope, and returns the tool's exit code.
+    /// </summary>
+    public static int Tool(Ports p, string tool, string[] args, Policy? policy = null)
     {
+        if (policy is not null && policy.Evaluate(args) is PolicyResult.Block b)
+        {
+            p.Render.Blocked(
+                command: $"{tool} {string.Join(' ', args)}".TrimEnd(),
+                reason: b.Reason,
+                suggestion: b.Suggestion);
+            return 1;
+        }
         var r = p.Exec.Run(tool, args);
         p.Render.Result(r);
         return r.ExitCode;

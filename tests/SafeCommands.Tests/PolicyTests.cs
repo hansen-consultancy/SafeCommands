@@ -76,6 +76,69 @@ public class PolicyTests
         Assert.IsType<PolicyResult.Allow>(policy.Evaluate([]));
     }
 
+    // ---- DenyFlags ----
+
+    [Fact]
+    public void DenyFlags_AllowsArgsWithoutMatchingFlag()
+    {
+        var policy = Policy.Default.DenyFlags("--force", "-f");
+        Assert.IsType<PolicyResult.Allow>(policy.Evaluate(["--name", "thing"]));
+    }
+
+    [Fact]
+    public void DenyFlags_BlocksExactMatch()
+    {
+        var policy = Policy.Default.DenyFlags("--force", "-f");
+        var block = Assert.IsType<PolicyResult.Block>(policy.Evaluate(["--name", "x", "--force"]));
+        Assert.Contains("--force", block.Reason);
+    }
+
+    [Fact]
+    public void DenyFlags_IsCaseInsensitive()
+    {
+        var policy = Policy.Default.DenyFlags("--force");
+        Assert.IsType<PolicyResult.Block>(policy.Evaluate(["--FORCE"]));
+    }
+
+    [Fact]
+    public void DenyFlags_DoesNotMatchSubstring()
+    {
+        // "--force" must not match "--force-with-lease" — exact-only semantics
+        var policy = Policy.Default.DenyFlags("--force");
+        Assert.IsType<PolicyResult.Allow>(policy.Evaluate(["--force-with-lease"]));
+    }
+
+    [Fact]
+    public void DenyFlags_EmptyArgs_Allows()
+    {
+        var policy = Policy.Default.DenyFlags("--force");
+        Assert.IsType<PolicyResult.Allow>(policy.Evaluate([]));
+    }
+
+    // ---- DenyArgsContaining ----
+
+    [Fact]
+    public void DenyArgsContaining_BlocksWhenSubstringMatches()
+    {
+        var policy = Policy.Default.DenyArgsContaining("fresh", "reset", "rollback", "wipe");
+        var block = Assert.IsType<PolicyResult.Block>(policy.Evaluate(["migrate:fresh"]));
+        Assert.Contains("fresh", block.Reason);
+    }
+
+    [Fact]
+    public void DenyArgsContaining_IsCaseInsensitive()
+    {
+        var policy = Policy.Default.DenyArgsContaining("reset");
+        Assert.IsType<PolicyResult.Block>(policy.Evaluate(["MIGRATE:RESET"]));
+    }
+
+    [Fact]
+    public void DenyArgsContaining_AllowsCleanArgs()
+    {
+        var policy = Policy.Default.DenyArgsContaining("fresh", "reset");
+        Assert.IsType<PolicyResult.Allow>(policy.Evaluate(["--step", "1"]));
+    }
+
     [Fact]
     public void Evaluate_ShortCircuitsOnFirstBlock()
     {

@@ -1,19 +1,12 @@
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
 static class PnpmCommands
 {
-    private static readonly HashSet<string> AllowedScripts =
-    [
-        "build", "dev", "start", "test", "lint", "format",
-        "typecheck", "check", "compile", "watch", "serve", "preview",
-        "generate", "codegen", "migrate", "seed", "prisma",
-        "storybook", "e2e", "cypress", "playwright",
-        "clean", "prebuild", "postbuild",
-    ];
-
     public static void Register(List<CommandDefinition> commands)
     {
         commands.AddRange([
@@ -33,52 +26,37 @@ static class PnpmCommands
         ]);
     }
 
-    private static int RunPnpm(string[] args, bool json)
+    internal static int RunOutdated(Ports p, string[] args) => Run.Tool(p, "pnpm", ["outdated", .. args]);
+    internal static int RunList(Ports p, string[] args)     => Run.Tool(p, "pnpm", ["list", .. args]);
+    internal static int RunAudit(Ports p, string[] args)    => Run.Tool(p, "pnpm", ["audit", .. args]);
+
+    internal static int RunWhy(Ports p, string[] args)
     {
-        var (code, output, error) = ProcessRunner.Run("pnpm", args);
-        if (json)
-            OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else
-        {
-            OutputFormatter.WritePassthrough(output);
-            OutputFormatter.WritePassthroughError(error);
-        }
-        return code;
+        if (args.Length == 0) { p.Render.Error("Usage: safe pnpm why <package>"); return 1; }
+        return Run.Tool(p, "pnpm", ["why", .. args]);
     }
 
-    private static int RunOutdated(string[] args, bool json) => RunPnpm(["outdated", ..args], json);
-    private static int RunList(string[] args, bool json) => RunPnpm(["list", ..args], json);
-    private static int RunAudit(string[] args, bool json) => RunPnpm(["audit", ..args], json);
-    private static int RunWhy(string[] args, bool json)
-    {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe pnpm why <package>"); return 1; }
-        return RunPnpm(["why", ..args], json);
-    }
+    internal static int RunInstall(Ports p, string[] args) => Run.Tool(p, "pnpm", ["install", .. args]);
 
-    private static int RunInstall(string[] args, bool json) => RunPnpm(["install", ..args], json);
-
-    private static int RunScript(string[] args, bool json)
+    internal static int RunScript(Ports p, string[] args)
     {
         if (args.Length == 0)
         {
-            OutputFormatter.WriteError("Usage: safe pnpm run <script>");
+            p.Render.Error("Usage: safe pnpm run <script>");
             return 1;
         }
-
-        var script = args[0].ToLowerInvariant();
-        if (!AllowedScripts.Contains(script))
+        // Policy evaluates against the script name (args[0]), not the "run" prefix we prepend.
+        var policy = Policy.Default.AllowOnlyScripts(NodeScripts.AllowedScripts);
+        if (policy.Evaluate(args) is PolicyResult.Block b)
         {
-            OutputFormatter.WriteBlocked($"pnpm run {script}",
-                $"Script '{script}' is not in the allowed list",
-                $"Allowed: {string.Join(", ", AllowedScripts.Take(15))}...");
+            p.Render.Blocked($"pnpm run {string.Join(' ', args)}".TrimEnd(), b.Reason, b.Suggestion);
             return 1;
         }
-
-        return RunPnpm(["run", ..args], json);
+        return Run.Tool(p, "pnpm", ["run", .. args]);
     }
 
-    private static int RunTest(string[] args, bool json) => RunPnpm(["test", ..args], json);
-    private static int RunBuild(string[] args, bool json) => RunPnpm(["run", "build", ..args], json);
-    private static int RunStorePrune(string[] args, bool json) => RunPnpm(["store", "prune"], json);
-    private static int RunDedupe(string[] args, bool json) => RunPnpm(["dedupe"], json);
+    internal static int RunTest(Ports p, string[] args)       => Run.Tool(p, "pnpm", ["test", .. args]);
+    internal static int RunBuild(Ports p, string[] args)      => Run.Tool(p, "pnpm", ["run", "build", .. args]);
+    internal static int RunStorePrune(Ports p, string[] args) => Run.Tool(p, "pnpm", ["store", "prune"]);
+    internal static int RunDedupe(Ports p, string[] args)     => Run.Tool(p, "pnpm", ["dedupe"]);
 }

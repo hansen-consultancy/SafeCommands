@@ -1,5 +1,7 @@
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
@@ -14,8 +16,11 @@ namespace SafeCommands.Commands;
 /// </summary>
 static class DbCommands
 {
-    // Flags that are NEVER allowed on any migration command
-    private static readonly HashSet<string> DestructiveFlags =
+    /// <summary>
+    /// Flags that are NEVER allowed on any migration command. Shared across Prisma,
+    /// Drizzle, and EF Core migrate commands.
+    /// </summary>
+    private static readonly string[] DestructiveFlags =
     [
         "--force", "-f",
         "--force-reset",
@@ -24,12 +29,7 @@ static class DbCommands
         "--skip-generate",
     ];
 
-    // Prisma commands that are destructive by nature
-    private static readonly HashSet<string> PrismaBlockedCommands =
-    [
-        "migrate reset",   // drops all tables
-        "db push",         // can drop tables with --force-reset or --accept-data-loss
-    ];
+    private static Policy DestructivePolicy => Policy.Default.DenyFlags(DestructiveFlags);
 
     public static void Register(List<CommandDefinition> commands)
     {
@@ -72,182 +72,135 @@ static class DbCommands
         ]);
     }
 
-    private static int BlockIfDestructive(string tool, string[] args)
+    /// <summary>
+    /// Evaluates <see cref="DestructivePolicy"/> with the project's "drops tables/data"
+    /// wording rather than DenyFlags' generic message. Returns 0 on Allow, 1 on Block.
+    /// </summary>
+    private static int CheckDestructive(Ports p, string tool, string[] args)
     {
-        foreach (var arg in args)
+        if (DestructivePolicy.Evaluate(args) is PolicyResult.Block)
         {
-            if (DestructiveFlags.Contains(arg.ToLowerInvariant()))
-            {
-                OutputFormatter.WriteBlocked($"{tool} {string.Join(' ', args)}",
-                    $"Flag '{arg}' can cause irreversible data loss (drops tables/data)",
-                    $"Remove '{arg}' for a safe operation");
-                return 1;
-            }
+            var offending = args.FirstOrDefault(a => DestructiveFlags.Contains(a.ToLowerInvariant())) ?? "";
+            p.Render.Blocked($"{tool} {string.Join(' ', args)}".TrimEnd(),
+                $"Flag '{offending}' can cause irreversible data loss (drops tables/data)",
+                $"Remove '{offending}' for a safe operation");
+            return 1;
         }
         return 0;
     }
 
-    private static int RunNpx(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("npx", args);
-        if (json)
-            OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else
-        {
-            OutputFormatter.WritePassthrough(output);
-            OutputFormatter.WritePassthroughError(error);
-        }
-        return code;
-    }
-
     // === Prisma ===
 
-    private static int RunPrismaStatus(string[] args, bool json) => RunNpx(["prisma", "migrate", "status"], json);
-    private static int RunPrismaStudio(string[] args, bool json) => RunNpx(["prisma", "studio"], json);
-    private static int RunPrismaGenerate(string[] args, bool json) => RunNpx(["prisma", "generate"], json);
-    private static int RunPrismaFormat(string[] args, bool json) => RunNpx(["prisma", "format"], json);
-    private static int RunPrismaValidate(string[] args, bool json) => RunNpx(["prisma", "validate"], json);
+    internal static int RunPrismaStatus(Ports p, string[] args)   => Run.Tool(p, "npx", ["prisma", "migrate", "status"]);
+    internal static int RunPrismaStudio(Ports p, string[] args)   => Run.Tool(p, "npx", ["prisma", "studio"]);
+    internal static int RunPrismaGenerate(Ports p, string[] args) => Run.Tool(p, "npx", ["prisma", "generate"]);
+    internal static int RunPrismaFormat(Ports p, string[] args)   => Run.Tool(p, "npx", ["prisma", "format"]);
+    internal static int RunPrismaValidate(Ports p, string[] args) => Run.Tool(p, "npx", ["prisma", "validate"]);
 
-    private static int RunPrismaMigrateDev(string[] args, bool json)
+    internal static int RunPrismaMigrateDev(Ports p, string[] args)
     {
-        var check = BlockIfDestructive("prisma migrate dev", args);
+        var check = CheckDestructive(p, "prisma migrate dev", args);
         if (check != 0) return check;
 
         var nameIdx = Array.IndexOf(args, "--name");
         if (nameIdx < 0 || nameIdx + 1 >= args.Length)
         {
-            OutputFormatter.WriteError("Usage: safe db prisma-migrate-dev --name <migration-name>");
+            p.Render.Error("Usage: safe db prisma-migrate-dev --name <migration-name>");
             return 1;
         }
 
-        return RunNpx(["prisma", "migrate", "dev", ..args], json);
+        return Run.Tool(p, "npx", ["prisma", "migrate", "dev", .. args]);
     }
 
-    private static int RunPrismaMigrateDeploy(string[] args, bool json)
+    internal static int RunPrismaMigrateDeploy(Ports p, string[] args)
     {
-        var check = BlockIfDestructive("prisma migrate deploy", args);
+        var check = CheckDestructive(p, "prisma migrate deploy", args);
         if (check != 0) return check;
-        return RunNpx(["prisma", "migrate", "deploy"], json);
+        return Run.Tool(p, "npx", ["prisma", "migrate", "deploy"]);
     }
 
-    private static int RunPrismaDbPull(string[] args, bool json) => RunNpx(["prisma", "db", "pull"], json);
-    private static int RunPrismaDbSeed(string[] args, bool json) => RunNpx(["prisma", "db", "seed"], json);
+    internal static int RunPrismaDbPull(Ports p, string[] args) => Run.Tool(p, "npx", ["prisma", "db", "pull"]);
+    internal static int RunPrismaDbSeed(Ports p, string[] args) => Run.Tool(p, "npx", ["prisma", "db", "seed"]);
 
     // === Drizzle ===
 
-    private static int RunDrizzleCheck(string[] args, bool json) => RunNpx(["drizzle-kit", "check"], json);
-    private static int RunDrizzleStatus(string[] args, bool json) => RunNpx(["drizzle-kit", "status"], json);
+    internal static int RunDrizzleCheck(Ports p, string[] args)    => Run.Tool(p, "npx", ["drizzle-kit", "check"]);
+    internal static int RunDrizzleStatus(Ports p, string[] args)   => Run.Tool(p, "npx", ["drizzle-kit", "status"]);
+    internal static int RunDrizzleGenerate(Ports p, string[] args) => Run.Tool(p, "npx", ["drizzle-kit", "generate", .. args]);
 
-    private static int RunDrizzleGenerate(string[] args, bool json) => RunNpx(["drizzle-kit", "generate", ..args], json);
-
-    private static int RunDrizzleMigrate(string[] args, bool json)
+    internal static int RunDrizzleMigrate(Ports p, string[] args)
     {
-        var check = BlockIfDestructive("drizzle-kit migrate", args);
+        var check = CheckDestructive(p, "drizzle-kit migrate", args);
         if (check != 0) return check;
         // drizzle-kit push is blocked entirely (it's the command that wiped 60+ tables)
         // only allow drizzle-kit migrate which applies generated SQL files
-        return RunNpx(["drizzle-kit", "migrate", ..args], json);
+        return Run.Tool(p, "npx", ["drizzle-kit", "migrate", .. args]);
     }
 
     // === EF Core ===
 
-    private static int RunEfMigrationsList(string[] args, bool json)
+    internal static int RunEfMigrationsList(Ports p, string[] args)
+        => Run.Tool(p, "dotnet", ["ef", "migrations", "list", .. args]);
+
+    internal static int RunEfMigrationsAdd(Ports p, string[] args)
     {
-        var (code, output, error) = ProcessRunner.Run("dotnet", ["ef", "migrations", "list", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
+        if (args.Length == 0) { p.Render.Error("Usage: safe db ef-migrations-add <name>"); return 1; }
+        return Run.Tool(p, "dotnet", ["ef", "migrations", "add", .. args]);
     }
 
-    private static int RunEfMigrationsAdd(string[] args, bool json)
+    internal static int RunEfDatabaseUpdate(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe db ef-migrations-add <name>"); return 1; }
-        var (code, output, error) = ProcessRunner.Run("dotnet", ["ef", "migrations", "add", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
-
-    private static int RunEfDatabaseUpdate(string[] args, bool json)
-    {
-        var check = BlockIfDestructive("ef database update", args);
+        var check = CheckDestructive(p, "ef database update", args);
         if (check != 0) return check;
-        var (code, output, error) = ProcessRunner.Run("dotnet", ["ef", "database", "update", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
+        return Run.Tool(p, "dotnet", ["ef", "database", "update", .. args]);
     }
 
-    private static int RunEfMigrationsScript(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("dotnet", ["ef", "migrations", "script", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
+    internal static int RunEfMigrationsScript(Ports p, string[] args)
+        => Run.Tool(p, "dotnet", ["ef", "migrations", "script", .. args]);
 
     // === Laravel / Artisan ===
 
-    private static int RunArtisanMigrateStatus(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("php", ["artisan", "migrate:status"]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
+    internal static int RunArtisanMigrateStatus(Ports p, string[] args)
+        => Run.Tool(p, "php", ["artisan", "migrate:status"]);
 
-    private static int RunArtisanMigrate(string[] args, bool json)
+    internal static int RunArtisanMigrate(Ports p, string[] args)
     {
-        // Block destructive artisan variants
-        foreach (var arg in args)
+        // Block destructive artisan variants. Substring match catches embedded forms
+        // like 'migrate:fresh' that exact flag-match would miss.
+        var policy = Policy.Default.DenyArgsContaining("fresh", "reset", "rollback", "wipe");
+        if (policy.Evaluate(args) is PolicyResult.Block)
         {
-            if (arg.Contains("fresh") || arg.Contains("reset") || arg.Contains("rollback") || arg.Contains("wipe"))
+            var offending = args.FirstOrDefault(a =>
             {
-                OutputFormatter.WriteBlocked($"artisan migrate {arg}",
-                    "migrate:fresh, migrate:reset, migrate:rollback, and db:wipe drop tables",
-                    "safe db artisan-migrate (forward-only migrations)");
-                return 1;
-            }
+                var lo = a.ToLowerInvariant();
+                return lo.Contains("fresh") || lo.Contains("reset") || lo.Contains("rollback") || lo.Contains("wipe");
+            }) ?? "";
+            p.Render.Blocked($"artisan migrate {offending}",
+                "migrate:fresh, migrate:reset, migrate:rollback, and db:wipe drop tables",
+                "safe db artisan-migrate (forward-only migrations)");
+            return 1;
         }
-
-        var (code, output, error) = ProcessRunner.Run("php", ["artisan", "migrate", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
+        return Run.Tool(p, "php", ["artisan", "migrate", .. args]);
     }
 
     // === Django ===
 
-    private static int RunDjangoShowMigrations(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("python", ["manage.py", "showmigrations", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
+    internal static int RunDjangoShowMigrations(Ports p, string[] args)
+        => Run.Tool(p, "python", ["manage.py", "showmigrations", .. args]);
 
-    private static int RunDjangoMigrate(string[] args, bool json)
+    internal static int RunDjangoMigrate(Ports p, string[] args)
     {
-        // Block migrating to "zero" (drops all tables for an app)
+        // 'zero' as a positional arg drops all tables for the named app
         if (args.Contains("zero"))
         {
-            OutputFormatter.WriteBlocked("django migrate <app> zero",
+            p.Render.Blocked("django migrate <app> zero",
                 "Migrating to 'zero' drops all tables for the app",
                 "safe db django-migrate (forward-only)");
             return 1;
         }
-
-        var (code, output, error) = ProcessRunner.Run("python", ["manage.py", "migrate", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
+        return Run.Tool(p, "python", ["manage.py", "migrate", .. args]);
     }
 
-    private static int RunDjangoMakeMigrations(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("python", ["manage.py", "makemigrations", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
+    internal static int RunDjangoMakeMigrations(Ports p, string[] args)
+        => Run.Tool(p, "python", ["manage.py", "makemigrations", .. args]);
 }

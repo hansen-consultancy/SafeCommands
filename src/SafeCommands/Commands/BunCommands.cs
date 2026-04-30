@@ -7,15 +7,6 @@ namespace SafeCommands.Commands;
 
 static class BunCommands
 {
-    internal static readonly HashSet<string> AllowedScripts =
-    [
-        "build", "dev", "start", "test", "lint", "format",
-        "typecheck", "check", "compile", "watch", "serve", "preview",
-        "generate", "codegen", "migrate", "seed", "prisma",
-        "storybook", "e2e", "cypress", "playwright",
-        "clean", "prebuild", "postbuild",
-    ];
-
     public static void Register(List<CommandDefinition> commands)
     {
         commands.AddRange([
@@ -50,7 +41,7 @@ static class BunCommands
             p.Render.Error("Usage: safe bun run <script>");
             return 1;
         }
-        return Run.Bun(p, "run", args, Policy.Default.AllowOnlyScripts(AllowedScripts));
+        return Run.Bun(p, "run", args, Policy.Default.AllowOnlyScripts(NodeScripts.AllowedScripts));
     }
 
     internal static int RunTest(Ports p, string[] args) => Run.Bun(p, "test", args);

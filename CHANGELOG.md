@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-01
+
+### Added
+- Two new safety primitives in `SafeCommands.Safety.Policy`:
+  - `DenyFlags(params string[])` — exact-match (case-insensitive) flag denial. Backs the bans on `--force`, `-v`, `--volumes`, `--rmi`, `--accept-data-loss`, etc.
+  - `DenyArgsContaining(params string[])` — substring denial for embedded forms like `migrate:fresh`. Use sparingly; prefer `DenyFlags` where exact match suffices.
+- `SafeCommands.Safety.NodeScripts.AllowedScripts` — single shared allowlist consumed by `bun`, `npm`, and `pnpm` (previously each group maintained its own copy of the same 22-script HashSet).
+- 52 new tests covering the new primitives and migrated handlers (`DotnetCommandsTests`, `DockerCommandsTests`, `NpmCommandsTests`, `PnpmCommandsTests`, `DbCommandsTests`). Total test count: 96.
+
+### Changed
+- **(Behaviour change, scoped to migrated groups)** PR #2 of [#2](https://github.com/hansen-consultancy/SafeCommands/issues/2) extends the structured `Blocked` JSON envelope (introduced in 0.4.0 for `bun`) to **`dotnet`, `docker`, `npm`, `pnpm`, and `db`**. Under `--json`, blocked commands in these groups now emit:
+  ```json
+  { "blocked": true, "command": "...", "reason": "...", "suggestion": "..." }
+  ```
+  Previously these groups still emitted Spectre markup under `--json`. Six groups have now rolled over (bun + the five above); the remaining six groups (`git`, `file`, `process`, `env`, `proxy`, `generate`) still emit markup until each migrates in subsequent phases.
+- `Run.Tool` now accepts an optional `Policy?` parameter, mirroring `Run.Bun`. On a `Block`, it emits the structured envelope and returns 1 without spawning the tool.
+- `DockerCommands`, `NpmCommands`, `PnpmCommands`, `DotnetCommands`, `DbCommands` migrated to the direct-port handler shape (`Func<Ports, string[], int>`).
+
 ## [0.4.0] - 2026-04-30
 
 ### Added
