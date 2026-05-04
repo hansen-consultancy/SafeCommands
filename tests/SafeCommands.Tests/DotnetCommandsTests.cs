@@ -10,7 +10,7 @@ public class DotnetCommandsTests
     {
         var exec = new FakeExecutor();
         var render = new FakeRenderer();
-        return (new Ports(exec, render), exec, render);
+        return (new Ports(exec, render, new FakeGitRepo()), exec, render);
     }
 
     [Fact]

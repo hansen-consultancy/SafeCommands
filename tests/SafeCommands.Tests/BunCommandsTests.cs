@@ -10,7 +10,7 @@ public class BunCommandsTests
     {
         var exec = new FakeExecutor();
         var render = new FakeRenderer { JsonMode = jsonMode };
-        return (new Ports(exec, render), exec, render);
+        return (new Ports(exec, render, new FakeGitRepo()), exec, render);
     }
 
     // ---- The previously-impossible assertion: blocked policy never spawns the tool ----

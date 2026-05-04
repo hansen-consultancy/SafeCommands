@@ -1,21 +1,23 @@
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
 static class GitCommands
 {
-    // Flags allowed for read-only git commands
     private static readonly HashSet<string> LogAllowedFlags = ["-n", "--oneline", "--graph", "--format", "--pretty", "--author", "--since", "--until", "--all", "--stat", "--no-merges", "--first-parent", "--reverse", "--abbrev-commit", "--date"];
     private static readonly HashSet<string> DiffAllowedFlags = ["--staged", "--cached", "--name-only", "--name-status", "--stat", "--shortstat", "--numstat", "--diff-filter", "--no-color", "--color=never", "--unified", "-U"];
-    private static readonly HashSet<string> PushBlockedFlags = ["--force", "-f", "--delete", "--no-verify"];
-    private static readonly HashSet<string> CommitBlockedFlags = ["--no-verify"];
     private static readonly HashSet<string> AddBlockedArgs = ["-A", "--all", "."];
+
+    private static readonly Policy PushPolicy = Policy.Default.DenyFlags("--force", "-f", "--delete", "--no-verify");
+    private static readonly Policy CommitPolicy = Policy.Default.DenyFlags("--no-verify", "-n");
 
     public static void Register(List<CommandDefinition> commands)
     {
         commands.AddRange([
-            // Read-only commands
+            // Read-only
             new("git", "status", "Show working tree status", "safe git status", SafetyLevel.ReadOnly, RunStatus),
             new("git", "log", "Show commit history", "safe git log [-n <count>] [--oneline] [--graph]", SafetyLevel.ReadOnly, RunLog),
             new("git", "diff", "Show changes", "safe git diff [--staged] [--name-only] [file...]", SafetyLevel.ReadOnly, RunDiff),
@@ -50,178 +52,152 @@ static class GitCommands
         ]);
     }
 
-    private static bool IsWorkingTreeClean()
+    /// <summary>Returns 1 with an error rendered if not in a git repo, else 0.</summary>
+    private static int RequireGitRepo(Ports p)
     {
-        var (code, output, _) = ProcessRunner.Run("git", ["status", "--porcelain"]);
-        return code == 0 && string.IsNullOrWhiteSpace(output);
-    }
-
-    private static bool IsGitRepo()
-    {
-        var (code, _, _) = ProcessRunner.Run("git", ["rev-parse", "--git-dir"]);
-        return code == 0;
-    }
-
-    private static int RequireGitRepo()
-    {
-        if (!IsGitRepo())
-        {
-            OutputFormatter.WriteError("Not a git repository");
-            return 1;
-        }
+        if (!p.Git.IsRepo()) { p.Render.Error("Not a git repository"); return 1; }
         return 0;
     }
 
-    private static int RequireCleanTree(string operation)
+    /// <summary>Returns 1 with a structured Blocked envelope if the working tree is dirty, else 0.</summary>
+    private static int RequireCleanTree(Ports p, string operation)
     {
-        if (!IsWorkingTreeClean())
+        if (!p.Git.IsWorkingTreeClean())
         {
-            OutputFormatter.WriteBlocked(operation, "Working tree has uncommitted changes",
+            p.Render.Blocked(operation,
+                "Working tree has uncommitted changes",
                 "Commit or stash your changes first: safe git stash");
             return 1;
         }
         return 0;
     }
 
-    private static int RunGit(string[] gitArgs, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("git", gitArgs);
-        if (json)
-            OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else
-        {
-            OutputFormatter.WritePassthrough(output);
-            OutputFormatter.WritePassthroughError(error);
-        }
-        return code;
-    }
-
     // === Read-only commands ===
 
-    private static int RunStatus(string[] args, bool json)
+    internal static int RunStatus(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        if (json)
+        if (RequireGitRepo(p) != 0) return 1;
+        if (p.Render.JsonMode)
         {
-            var (code, output, _) = ProcessRunner.Run("git", ["status", "--porcelain", "-b"]);
-            var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            var r = p.Exec.Run("git", ["status", "--porcelain", "-b"]);
+            var lines = r.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries);
             var branch = lines.Length > 0 ? lines[0].TrimStart('#', ' ') : "unknown";
             var files = lines.Skip(1).Select(l => new { status = l[..2].Trim(), file = l[3..] }).ToArray();
-            OutputFormatter.WriteJson(new { branch, clean = files.Length == 0, files });
-            return code;
+            p.Render.Json(new { branch, clean = files.Length == 0, files });
+            return r.ExitCode;
         }
-        return RunGit(["status", ..args], false);
+        return Run.Tool(p, "git", ["status", .. args]);
     }
 
-    private static int RunLog(string[] args, bool json)
+    internal static int RunLog(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
+        if (RequireGitRepo(p) != 0) return 1;
         var filtered = FilterFlags(args, LogAllowedFlags, allowPositional: true);
-        return RunGit(["log", ..filtered], json);
+        return Run.Tool(p, "git", ["log", .. filtered]);
     }
 
-    private static int RunDiff(string[] args, bool json)
+    internal static int RunDiff(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
+        if (RequireGitRepo(p) != 0) return 1;
         var filtered = FilterFlags(args, DiffAllowedFlags, allowPositional: true);
-        return RunGit(["diff", ..filtered], json);
+        return Run.Tool(p, "git", ["diff", .. filtered]);
     }
 
-    private static int RunShow(string[] args, bool json)
+    internal static int RunShow(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git show <ref>"); return 1; }
-        return RunGit(["show", args[0]], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        if (args.Length == 0) { p.Render.Error("Usage: safe git show <ref>"); return 1; }
+        return Run.Tool(p, "git", ["show", args[0]]);
     }
 
-    private static int RunBranch(string[] args, bool json)
+    internal static int RunBranch(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        if (json)
+        if (RequireGitRepo(p) != 0) return 1;
+        if (p.Render.JsonMode)
         {
-            var (code, output, _) = ProcessRunner.Run("git", ["branch", "--list", "--no-color"]);
-            var branches = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            var r = p.Exec.Run("git", ["branch", "--list", "--no-color"]);
+            var branches = r.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(b => new { name = b.TrimStart('*', ' '), current = b.StartsWith('*') })
                 .ToArray();
-            OutputFormatter.WriteJson(new { branches });
-            return code;
+            p.Render.Json(new { branches });
+            return r.ExitCode;
         }
-        return RunGit(["branch", "--list", ..args], false);
+        return Run.Tool(p, "git", ["branch", "--list", .. args]);
     }
 
-    private static int RunTag(string[] args, bool json)
+    internal static int RunTag(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        return RunGit(["tag", "--list", ..args], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        return Run.Tool(p, "git", ["tag", "--list", .. args]);
     }
 
-    private static int RunRemote(string[] args, bool json)
+    internal static int RunRemote(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
+        if (RequireGitRepo(p) != 0) return 1;
         if (args.Length > 0 && args[0] == "show")
-            return RunGit(["remote", ..args], json);
-        return RunGit(["remote", "-v"], json);
+            return Run.Tool(p, "git", ["remote", .. args]);
+        return Run.Tool(p, "git", ["remote", "-v"]);
     }
 
-    private static int RunBlame(string[] args, bool json)
+    internal static int RunBlame(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git blame <file>"); return 1; }
-        return RunGit(["blame", args[0]], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        if (args.Length == 0) { p.Render.Error("Usage: safe git blame <file>"); return 1; }
+        return Run.Tool(p, "git", ["blame", args[0]]);
     }
 
-    private static int RunRevParse(string[] args, bool json)
+    internal static int RunRevParse(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git rev-parse <ref>"); return 1; }
-        return RunGit(["rev-parse", ..args], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        if (args.Length == 0) { p.Render.Error("Usage: safe git rev-parse <ref>"); return 1; }
+        return Run.Tool(p, "git", ["rev-parse", .. args]);
     }
 
-    private static int RunLsFiles(string[] args, bool json)
+    internal static int RunLsFiles(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        return RunGit(["ls-files", ..args], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        return Run.Tool(p, "git", ["ls-files", .. args]);
     }
 
-    private static int RunShortlog(string[] args, bool json)
+    internal static int RunShortlog(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        return RunGit(["shortlog", ..args], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        return Run.Tool(p, "git", ["shortlog", .. args]);
     }
 
     // === Safe writes ===
 
-    private static int RunStash(string[] args, bool json)
+    internal static int RunStash(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        return RunGit(["stash", "push", ..args], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        return Run.Tool(p, "git", ["stash", "push", .. args]);
     }
 
-    private static int RunStashList(string[] args, bool json)
+    internal static int RunStashList(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        return RunGit(["stash", "list"], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        return Run.Tool(p, "git", ["stash", "list"]);
     }
 
-    private static int RunStashPop(string[] args, bool json)
+    internal static int RunStashPop(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        return RunGit(["stash", "pop"], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        return Run.Tool(p, "git", ["stash", "pop"]);
     }
 
-    private static int RunStashApply(string[] args, bool json)
+    internal static int RunStashApply(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
+        if (RequireGitRepo(p) != 0) return 1;
         var stashRef = args.Length > 0 ? args[0] : "stash@{0}";
-        return RunGit(["stash", "apply", stashRef], json);
+        return Run.Tool(p, "git", ["stash", "apply", stashRef]);
     }
 
-    private static int RunAdd(string[] args, bool json)
+    internal static int RunAdd(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
+        if (RequireGitRepo(p) != 0) return 1;
         if (args.Length == 0)
         {
-            OutputFormatter.WriteError("Usage: safe git add <file...> (use 'safe git add-tracked' for all tracked files)");
+            p.Render.Error("Usage: safe git add <file...> (use 'safe git add-tracked' for all tracked files)");
             return 1;
         }
 
@@ -229,30 +205,30 @@ static class GitCommands
         {
             if (AddBlockedArgs.Contains(arg))
             {
-                OutputFormatter.WriteBlocked($"git add {arg}",
+                p.Render.Blocked($"git add {arg}",
                     "Adding all files is not allowed - it may stage secrets or unwanted files",
                     "safe git add <specific-file> or safe git add-tracked");
                 return 1;
             }
         }
 
-        return RunGit(["add", ..args], json);
+        return Run.Tool(p, "git", ["add", .. args]);
     }
 
-    private static int RunAddTracked(string[] args, bool json)
+    internal static int RunAddTracked(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        return RunGit(["add", "-u"], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        return Run.Tool(p, "git", ["add", "-u"]);
     }
 
-    private static int RunCommit(string[] args, bool json)
+    internal static int RunCommit(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
+        if (RequireGitRepo(p) != 0) return 1;
 
-        // Block --no-verify - agents must not bypass pre-commit hooks
-        if (args.Contains("--no-verify") || args.Contains("-n"))
+        // Block --no-verify / -n - agents must not bypass pre-commit hooks
+        if (CommitPolicy.Evaluate(args) is PolicyResult.Block)
         {
-            OutputFormatter.WriteBlocked("git commit --no-verify",
+            p.Render.Blocked("git commit --no-verify",
                 "Bypassing pre-commit hooks is not allowed - hooks exist for safety",
                 "Fix the issue that the hook is catching, then commit normally");
             return 1;
@@ -262,139 +238,132 @@ static class GitCommands
         var msgIndex = Array.IndexOf(args, "-m");
         if (msgIndex < 0 || msgIndex >= args.Length - 1)
         {
-            OutputFormatter.WriteError("Usage: safe git commit -m \"<message>\"");
+            p.Render.Error("Usage: safe git commit -m \"<message>\"");
             return 1;
         }
 
         // Block --amend through regular commit - use commit-amend instead
         if (args.Contains("--amend"))
         {
-            OutputFormatter.WriteBlocked("git commit --amend",
-                "Use 'safe git commit-amend' for amending commits (includes safety checks)");
+            p.Render.Blocked("git commit --amend",
+                "Use 'safe git commit-amend' for amending commits (includes safety checks)",
+                "safe git commit-amend [-m <message>]");
             return 1;
         }
 
-        return RunGit(["commit", ..args], json);
+        return Run.Tool(p, "git", ["commit", .. args]);
     }
 
-    private static int RunCommitAmend(string[] args, bool json)
+    internal static int RunCommitAmend(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
+        if (RequireGitRepo(p) != 0) return 1;
 
-        // Check if HEAD has been pushed to any remote tracking branch
-        var (_, headHash, _) = ProcessRunner.Run("git", ["rev-parse", "HEAD"]);
-        var (_, branch, _) = ProcessRunner.Run("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
-        var (remoteCode, remoteHash, _) = ProcessRunner.Run("git", ["rev-parse", $"origin/{branch.Trim()}"]);
-
-        if (remoteCode == 0 && headHash.Trim() == remoteHash.Trim())
+        var head = p.Git.GetHeadStatus();
+        if (head.IsPushed)
         {
-            OutputFormatter.WriteBlocked("git commit --amend",
-                "HEAD commit has already been pushed to remote - amending would require force push",
+            p.Render.Blocked("git commit --amend",
+                $"HEAD is pushed to {head.Upstream}; amending would rewrite published history",
                 "Create a new commit instead: safe git commit -m \"<message>\"");
             return 1;
         }
 
-        return RunGit(["commit", "--amend", ..args], json);
+        return Run.Tool(p, "git", ["commit", "--amend", .. args]);
     }
 
-    private static int RunFetch(string[] args, bool json)
+    internal static int RunFetch(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        return RunGit(["fetch", ..args], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        return Run.Tool(p, "git", ["fetch", .. args]);
     }
 
-    private static int RunBranchCreate(string[] args, bool json)
+    internal static int RunBranchCreate(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git branch-create <name>"); return 1; }
-        return RunGit(["branch", args[0]], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        if (args.Length == 0) { p.Render.Error("Usage: safe git branch-create <name>"); return 1; }
+        return Run.Tool(p, "git", ["branch", args[0]]);
     }
 
     // === Checked writes ===
 
-    private static int RunPull(string[] args, bool json)
+    internal static int RunPull(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        var check = RequireCleanTree("git pull");
-        if (check != 0) return check;
-        return RunGit(["pull", ..args], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        if (RequireCleanTree(p, "git pull") != 0) return 1;
+        return Run.Tool(p, "git", ["pull", .. args]);
     }
 
-    private static int RunPush(string[] args, bool json)
+    internal static int RunPush(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
+        if (RequireGitRepo(p) != 0) return 1;
 
-        foreach (var arg in args)
+        if (PushPolicy.Evaluate(args) is PolicyResult.Block)
         {
-            if (PushBlockedFlags.Contains(arg))
-            {
-                OutputFormatter.WriteBlocked($"git push {arg}",
-                    "Force push and delete are not allowed",
-                    "safe git push (without --force)");
-                return 1;
-            }
+            var offending = args.FirstOrDefault(a =>
+                a is "--force" or "-f" or "--delete" or "--no-verify") ?? "";
+            p.Render.Blocked($"git push {offending}".TrimEnd(),
+                "Force push, branch deletion, and hook bypass are not allowed",
+                "safe git push (use --force-with-lease if you need to overwrite a tracked branch)");
+            return 1;
         }
 
-        return RunGit(["push", ..args], json);
+        return Run.Tool(p, "git", ["push", .. args]);
     }
 
-    private static int RunCheckout(string[] args, bool json)
+    internal static int RunCheckout(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
+        if (RequireGitRepo(p) != 0) return 1;
         if (args.Length == 0)
         {
-            OutputFormatter.WriteError("Usage: safe git checkout <branch>");
+            p.Render.Error("Usage: safe git checkout <branch>");
             return 1;
         }
 
         // Block "checkout ." or "checkout -- ." which discards all changes
         if (args[0] == "." || (args.Length >= 2 && args[0] == "--" && args[1] == "."))
         {
-            OutputFormatter.WriteBlocked("git checkout .",
+            p.Render.Blocked("git checkout .",
                 "Discarding all changes is not allowed",
                 "safe git checkout-file <specific-file> to restore individual files");
             return 1;
         }
 
-        var check = RequireCleanTree("git checkout");
-        if (check != 0) return check;
-        return RunGit(["checkout", ..args], json);
+        if (RequireCleanTree(p, "git checkout") != 0) return 1;
+        return Run.Tool(p, "git", ["checkout", .. args]);
     }
 
-    private static int RunCheckoutFile(string[] args, bool json)
+    internal static int RunCheckoutFile(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
+        if (RequireGitRepo(p) != 0) return 1;
         if (args.Length == 0)
         {
-            OutputFormatter.WriteError("Usage: safe git checkout-file <file>");
+            p.Render.Error("Usage: safe git checkout-file <file>");
             return 1;
         }
 
         if (args[0] == "." || args[0] == "*")
         {
-            OutputFormatter.WriteBlocked("git checkout-file .",
+            p.Render.Blocked("git checkout-file .",
                 "Discarding all changes is not allowed",
                 "Specify individual files: safe git checkout-file <file>");
             return 1;
         }
 
-        return RunGit(["checkout", "--", args[0]], json);
+        return Run.Tool(p, "git", ["checkout", "--", args[0]]);
     }
 
-    private static int RunMerge(string[] args, bool json)
+    internal static int RunMerge(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git merge <branch>"); return 1; }
-        var check = RequireCleanTree("git merge");
-        if (check != 0) return check;
-        return RunGit(["merge", args[0]], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        if (args.Length == 0) { p.Render.Error("Usage: safe git merge <branch>"); return 1; }
+        if (RequireCleanTree(p, "git merge") != 0) return 1;
+        return Run.Tool(p, "git", ["merge", args[0]]);
     }
 
-    private static int RunCherryPick(string[] args, bool json)
+    internal static int RunCherryPick(Ports p, string[] args)
     {
-        if (RequireGitRepo() != 0) return 1;
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git cherry-pick <hash>"); return 1; }
-        return RunGit(["cherry-pick", args[0]], json);
+        if (RequireGitRepo(p) != 0) return 1;
+        if (args.Length == 0) { p.Render.Error("Usage: safe git cherry-pick <hash>"); return 1; }
+        return Run.Tool(p, "git", ["cherry-pick", args[0]]);
     }
 
     // === Helpers ===
@@ -407,16 +376,12 @@ static class GitCommands
             var arg = args[i];
             if (arg.StartsWith('-'))
             {
-                // Check if the flag itself is allowed, or the flag base (for --flag=value)
                 var flagBase = arg.Contains('=') ? arg[..arg.IndexOf('=')] : arg;
                 if (allowedFlags.Contains(flagBase) || allowedFlags.Contains(arg))
                 {
                     result.Add(arg);
-                    // If flag expects a value and it's not --flag=value form, include next arg
                     if (!arg.Contains('=') && NeedsFlagValue(flagBase) && i + 1 < args.Length)
-                    {
                         result.Add(args[++i]);
-                    }
                 }
                 // Skip unknown flags silently
             }

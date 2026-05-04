@@ -1,6 +1,7 @@
 using Spectre.Console;
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
@@ -32,13 +33,13 @@ static class FileCommands
     /// <summary>
     /// Validates that a resolved path is within the current working directory tree.
     /// Prevents path traversal attacks (e.g., reading ~/.ssh/authorized_keys).
+    /// On rejection, emits a structured Blocked envelope and returns false.
     /// </summary>
-    private static bool ValidatePath(string path, string operation)
+    private static bool ValidatePath(Ports p, string path, string operation)
     {
         var fullPath = Path.GetFullPath(path);
         var projectRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
 
-        // Ensure projectRoot ends with a separator so "/proj" doesn't match "/projEvil"
         if (!projectRoot.EndsWith(Path.DirectorySeparatorChar))
             projectRoot += Path.DirectorySeparatorChar;
 
@@ -48,7 +49,7 @@ static class FileCommands
             return true;
         }
 
-        OutputFormatter.WriteBlocked(operation,
+        p.Render.Blocked(operation,
             $"Path '{fullPath}' is outside the project directory",
             $"All file operations are sandboxed to: {projectRoot.TrimEnd(Path.DirectorySeparatorChar)}");
         return false;
@@ -82,13 +83,13 @@ static class FileCommands
 
     // === Read-only ===
 
-    private static int RunList(string[] args, bool json)
+    internal static int RunList(Ports p, string[] args)
     {
         var path = args.Length > 0 ? args[0] : ".";
-        if (!ValidatePath(path, "file list")) return 1;
+        if (!ValidatePath(p, path, "file list")) return 1;
         if (!Directory.Exists(path))
         {
-            OutputFormatter.WriteError($"Directory not found: {path}");
+            p.Render.Error($"Directory not found: {path}");
             return 1;
         }
 
@@ -103,9 +104,9 @@ static class FileCommands
             .ThenBy(e => e.name)
             .ToArray();
 
-        if (json)
+        if (p.Render.JsonMode)
         {
-            OutputFormatter.WriteJson(new { path = Path.GetFullPath(path), entries });
+            p.Render.Json(new { path = Path.GetFullPath(path), entries });
         }
         else
         {
@@ -113,20 +114,20 @@ static class FileCommands
             {
                 var prefix = entry.type == "dir" ? "[blue]" : "[default]";
                 var suffix = entry.type == "dir" ? "/[/]" : "[/]";
-                Spectre.Console.AnsiConsole.MarkupLine($"{prefix}{entry.name.EscapeMarkup()}{suffix}");
+                AnsiConsole.MarkupLine($"{prefix}{entry.name.EscapeMarkup()}{suffix}");
             }
         }
         return 0;
     }
 
-    private static int RunRead(string[] args, bool json)
+    internal static int RunRead(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file read <path>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe file read <path>"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file read")) return 1;
+        if (!ValidatePath(p, path, "file read")) return 1;
         if (!File.Exists(path))
         {
-            OutputFormatter.WriteError($"File not found: {path}");
+            p.Render.Error($"File not found: {path}");
             return 1;
         }
 
@@ -139,43 +140,43 @@ static class FileCommands
             ? string.Join('\n', File.ReadLines(path).Take(lines))
             : File.ReadAllText(path);
 
-        if (json)
-            OutputFormatter.WriteJson(new { path = Path.GetFullPath(path), content, lineCount = content.Split('\n').Length });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { path = Path.GetFullPath(path), content, lineCount = content.Split('\n').Length });
         else
             Console.Write(content);
 
         return 0;
     }
 
-    private static int RunExists(string[] args, bool json)
+    internal static int RunExists(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file exists <path>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe file exists <path>"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file exists")) return 1;
+        if (!ValidatePath(p, path, "file exists")) return 1;
         var fileExists = File.Exists(path);
         var dirExists = Directory.Exists(path);
         var exists = fileExists || dirExists;
         var type = fileExists ? "file" : dirExists ? "directory" : "none";
 
-        if (json)
-            OutputFormatter.WriteJson(new { path, exists, type });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { path, exists, type });
         else
             Console.WriteLine(exists ? $"Exists ({type}): {Path.GetFullPath(path)}" : $"Not found: {path}");
 
         return exists ? 0 : 1;
     }
 
-    private static int RunInfo(string[] args, bool json)
+    internal static int RunInfo(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file info <path>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe file info <path>"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file info")) return 1;
+        if (!ValidatePath(p, path, "file info")) return 1;
 
         if (File.Exists(path))
         {
             var fi = new FileInfo(path);
-            if (json)
-                OutputFormatter.WriteJson(new { path = fi.FullName, type = "file", size = fi.Length, created = fi.CreationTimeUtc, modified = fi.LastWriteTimeUtc, readOnly = fi.IsReadOnly });
+            if (p.Render.JsonMode)
+                p.Render.Json(new { path = fi.FullName, type = "file", size = fi.Length, created = fi.CreationTimeUtc, modified = fi.LastWriteTimeUtc, readOnly = fi.IsReadOnly });
             else
             {
                 Console.WriteLine($"Path:     {fi.FullName}");
@@ -191,8 +192,8 @@ static class FileCommands
         if (Directory.Exists(path))
         {
             var di = new DirectoryInfo(path);
-            if (json)
-                OutputFormatter.WriteJson(new { path = di.FullName, type = "directory", created = di.CreationTimeUtc, modified = di.LastWriteTimeUtc });
+            if (p.Render.JsonMode)
+                p.Render.Json(new { path = di.FullName, type = "directory", created = di.CreationTimeUtc, modified = di.LastWriteTimeUtc });
             else
             {
                 Console.WriteLine($"Path:     {di.FullName}");
@@ -203,16 +204,16 @@ static class FileCommands
             return 0;
         }
 
-        OutputFormatter.WriteError($"Not found: {path}");
+        p.Render.Error($"Not found: {path}");
         return 1;
     }
 
-    private static int RunCount(string[] args, bool json)
+    internal static int RunCount(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file count <path> [--lines|--words|--chars]"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe file count <path> [--lines|--words|--chars]"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file count")) return 1;
-        if (!File.Exists(path)) { OutputFormatter.WriteError($"File not found: {path}"); return 1; }
+        if (!ValidatePath(p, path, "file count")) return 1;
+        if (!File.Exists(path)) { p.Render.Error($"File not found: {path}"); return 1; }
 
         var wantLines = args.Contains("--lines");
         var wantWords = args.Contains("--words");
@@ -224,13 +225,13 @@ static class FileCommands
         long words = content.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
         long chars = content.Length;
 
-        if (json)
+        if (p.Render.JsonMode)
         {
             var result = new Dictionary<string, object> { ["path"] = Path.GetFullPath(path) };
             if (wantLines) result["lines"] = lines;
             if (wantWords) result["words"] = words;
             if (wantChars) result["chars"] = chars;
-            OutputFormatter.WriteJson(result);
+            p.Render.Json(result);
         }
         else
         {
@@ -243,9 +244,9 @@ static class FileCommands
         return 0;
     }
 
-    private static int RunFind(string[] args, bool json)
+    internal static int RunFind(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file find <pattern> [--in <dir>]"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe file find <pattern> [--in <dir>]"); return 1; }
 
         var pattern = args[0];
         var dir = ".";
@@ -253,10 +254,10 @@ static class FileCommands
         if (inIdx >= 0 && inIdx + 1 < args.Length)
             dir = args[inIdx + 1];
 
-        if (!ValidatePath(dir, "file find")) return 1;
+        if (!ValidatePath(p, dir, "file find")) return 1;
         if (!Directory.Exists(dir))
         {
-            OutputFormatter.WriteError($"Directory not found: {dir}");
+            p.Render.Error($"Directory not found: {dir}");
             return 1;
         }
 
@@ -267,8 +268,8 @@ static class FileCommands
                 .Take(500)
                 .ToArray();
 
-            if (json)
-                OutputFormatter.WriteJson(new { pattern, directory = Path.GetFullPath(dir), count = files.Length, files });
+            if (p.Render.JsonMode)
+                p.Render.Json(new { pattern, directory = Path.GetFullPath(dir), count = files.Length, files });
             else
                 foreach (var file in files)
                     Console.WriteLine(file);
@@ -277,12 +278,12 @@ static class FileCommands
         }
         catch (Exception ex)
         {
-            OutputFormatter.WriteError(ex.Message);
+            p.Render.Error(ex.Message);
             return 1;
         }
     }
 
-    private static int RunTree(string[] args, bool json)
+    internal static int RunTree(Ports p, string[] args)
     {
         var path = args.Length > 0 && !args[0].StartsWith("--") ? args[0] : ".";
         var maxDepth = 3;
@@ -290,17 +291,17 @@ static class FileCommands
         if (depthIdx >= 0 && depthIdx + 1 < args.Length)
             int.TryParse(args[depthIdx + 1], out maxDepth);
 
-        if (!ValidatePath(path, "file tree")) return 1;
+        if (!ValidatePath(p, path, "file tree")) return 1;
         if (!Directory.Exists(path))
         {
-            OutputFormatter.WriteError($"Directory not found: {path}");
+            p.Render.Error($"Directory not found: {path}");
             return 1;
         }
 
-        if (json)
+        if (p.Render.JsonMode)
         {
             var tree = BuildTree(path, maxDepth, 0);
-            OutputFormatter.WriteJson(tree);
+            p.Render.Json(tree);
         }
         else
         {
@@ -356,52 +357,52 @@ static class FileCommands
 
     // === Safe writes ===
 
-    private static int RunMkdir(string[] args, bool json)
+    internal static int RunMkdir(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file mkdir <path>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe file mkdir <path>"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file mkdir")) return 1;
+        if (!ValidatePath(p, path, "file mkdir")) return 1;
         Directory.CreateDirectory(path);
-        if (json)
-            OutputFormatter.WriteJson(new { created = Path.GetFullPath(path) });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { created = Path.GetFullPath(path) });
         else
-            OutputFormatter.WriteSuccess($"Created: {Path.GetFullPath(path)}");
+            p.Render.Info($"Created: {Path.GetFullPath(path)}");
         return 0;
     }
 
-    private static int RunCopy(string[] args, bool json)
+    internal static int RunCopy(Ports p, string[] args)
     {
-        if (args.Length < 2) { OutputFormatter.WriteError("Usage: safe file copy <src> <dest>"); return 1; }
+        if (args.Length < 2) { p.Render.Error("Usage: safe file copy <src> <dest>"); return 1; }
         var src = args[0];
         var dest = args[1];
 
-        if (!ValidatePath(src, "file copy (source)")) return 1;
-        if (!ValidatePath(dest, "file copy (destination)")) return 1;
-        if (!File.Exists(src)) { OutputFormatter.WriteError($"Source not found: {src}"); return 1; }
+        if (!ValidatePath(p, src, "file copy (source)")) return 1;
+        if (!ValidatePath(p, dest, "file copy (destination)")) return 1;
+        if (!File.Exists(src)) { p.Render.Error($"Source not found: {src}"); return 1; }
         if (File.Exists(dest))
         {
-            OutputFormatter.WriteBlocked("file copy", "Destination already exists - overwrite not allowed",
+            p.Render.Blocked("file copy", "Destination already exists - overwrite not allowed",
                 "Delete the destination first or choose a different name");
             return 1;
         }
 
         File.Copy(src, dest);
-        if (json)
-            OutputFormatter.WriteJson(new { source = Path.GetFullPath(src), destination = Path.GetFullPath(dest) });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { source = Path.GetFullPath(src), destination = Path.GetFullPath(dest) });
         else
-            OutputFormatter.WriteSuccess($"Copied: {src} -> {dest}");
+            p.Render.Info($"Copied: {src} -> {dest}");
         return 0;
     }
 
-    private static int RunWrite(string[] args, bool json)
+    internal static int RunWrite(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file write <path> --content <text>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe file write <path> --content <text>"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file write")) return 1;
+        if (!ValidatePath(p, path, "file write")) return 1;
 
         if (File.Exists(path))
         {
-            OutputFormatter.WriteBlocked("file write", "File already exists - overwrite not allowed",
+            p.Render.Blocked("file write", "File already exists - overwrite not allowed",
                 "Use a different path or delete the file first");
             return 1;
         }
@@ -409,7 +410,7 @@ static class FileCommands
         var contentIdx = Array.IndexOf(args, "--content");
         if (contentIdx < 0 || contentIdx + 1 >= args.Length)
         {
-            OutputFormatter.WriteError("Usage: safe file write <path> --content <text>");
+            p.Render.Error("Usage: safe file write <path> --content <text>");
             return 1;
         }
 
@@ -419,65 +420,59 @@ static class FileCommands
             Directory.CreateDirectory(dir);
 
         File.WriteAllText(path, content);
-        if (json)
-            OutputFormatter.WriteJson(new { path = Path.GetFullPath(path), bytes = content.Length });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { path = Path.GetFullPath(path), bytes = content.Length });
         else
-            OutputFormatter.WriteSuccess($"Written: {Path.GetFullPath(path)}");
+            p.Render.Info($"Written: {Path.GetFullPath(path)}");
         return 0;
     }
 
     // === Targeted writes ===
 
-    private static int RunDeleteTracked(string[] args, bool json)
+    internal static int RunDeleteTracked(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file delete-tracked <file>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe file delete-tracked <file>"); return 1; }
         var file = args[0];
 
-        if (!ValidatePath(file, "file delete-tracked")) return 1;
-        if (!File.Exists(file)) { OutputFormatter.WriteError($"File not found: {file}"); return 1; }
+        if (!ValidatePath(p, file, "file delete-tracked")) return 1;
+        if (!File.Exists(file)) { p.Render.Error($"File not found: {file}"); return 1; }
 
-        // Check if file is git-tracked
-        var (code, _, _) = ProcessRunner.Run("git", ["ls-files", "--error-unmatch", file]);
-        if (code != 0)
+        if (!p.Git.IsFileTracked(file))
         {
-            OutputFormatter.WriteBlocked($"file delete-tracked {file}",
+            p.Render.Blocked($"file delete-tracked {file}",
                 "File is not tracked by git - cannot safely delete",
                 "Only git-tracked files can be deleted (recoverable via git checkout)");
             return 1;
         }
 
-        // Check if file has uncommitted changes
-        var (_, diffOutput, _) = ProcessRunner.Run("git", ["diff", "--name-only", file]);
-        var (_, stagedOutput, _) = ProcessRunner.Run("git", ["diff", "--staged", "--name-only", file]);
-        if (!string.IsNullOrWhiteSpace(diffOutput) || !string.IsNullOrWhiteSpace(stagedOutput))
+        if (p.Git.HasPendingChanges(file))
         {
-            OutputFormatter.WriteBlocked($"file delete-tracked {file}",
+            p.Render.Blocked($"file delete-tracked {file}",
                 "File has uncommitted changes - commit or stash first",
-                "safe git stash, then safe file delete-tracked " + file);
+                $"safe git stash, then safe file delete-tracked {file}");
             return 1;
         }
 
         File.Delete(file);
-        if (json)
-            OutputFormatter.WriteJson(new { deleted = file, recoverable = true, recovery = $"git checkout HEAD -- {file}" });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { deleted = file, recoverable = true, recovery = $"git checkout HEAD -- {file}" });
         else
-            OutputFormatter.WriteSuccess($"Deleted: {file} (recover with: git checkout HEAD -- {file})");
+            p.Render.Info($"Deleted: {file} (recover with: git checkout HEAD -- {file})");
         return 0;
     }
 
-    private static int RunDeleteTemp(string[] args, bool json)
+    internal static int RunDeleteTemp(Ports p, string[] args)
     {
         var basePath = args.Length > 0 ? args[0] : ".";
-        if (!ValidatePath(basePath, "file delete-temp")) return 1;
+        if (!ValidatePath(p, basePath, "file delete-temp")) return 1;
         if (!Directory.Exists(basePath))
         {
-            OutputFormatter.WriteError($"Directory not found: {basePath}");
+            p.Render.Error($"Directory not found: {basePath}");
             return 1;
         }
 
         var deleted = new List<string>();
 
-        // Delete safe directories
         foreach (var dir in SafeDeleteDirs)
         {
             var fullPath = Path.Combine(basePath, dir);
@@ -490,12 +485,11 @@ static class FileCommands
                 }
                 catch (Exception ex)
                 {
-                    OutputFormatter.WriteWarning($"Could not delete {fullPath}: {ex.Message}");
+                    p.Render.Warning($"Could not delete {fullPath}: {ex.Message}");
                 }
             }
         }
 
-        // Delete temp file patterns in root only (not recursive)
         foreach (var pattern in TempPatterns)
         {
             try
@@ -509,11 +503,11 @@ static class FileCommands
             catch { /* skip if pattern fails */ }
         }
 
-        if (json)
-            OutputFormatter.WriteJson(new { deleted, count = deleted.Count });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { deleted, count = deleted.Count });
         else if (deleted.Count > 0)
         {
-            OutputFormatter.WriteSuccess($"Deleted {deleted.Count} temp items:");
+            p.Render.Info($"Deleted {deleted.Count} temp items:");
             foreach (var d in deleted)
                 Console.WriteLine($"  {d}");
         }
@@ -523,11 +517,10 @@ static class FileCommands
         return 0;
     }
 
-    private static int RunDeleteLocks(string[] args, bool json)
+    internal static int RunDeleteLocks(Ports p, string[] args)
     {
         var deleted = new List<string>();
 
-        // Find and delete git lock files
         foreach (var pattern in LockFiles)
         {
             var dir = Path.GetDirectoryName(pattern) ?? ".";
@@ -546,7 +539,6 @@ static class FileCommands
             catch { /* skip */ }
         }
 
-        // Also check for package manager lock scenarios
         var lockCandidates = new[] { "package-lock.json.lock", "yarn.lock.lock", ".npmrc.lock" };
         foreach (var lockFile in lockCandidates)
         {
@@ -557,11 +549,11 @@ static class FileCommands
             }
         }
 
-        if (json)
-            OutputFormatter.WriteJson(new { deleted, count = deleted.Count });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { deleted, count = deleted.Count });
         else if (deleted.Count > 0)
         {
-            OutputFormatter.WriteSuccess($"Deleted {deleted.Count} lock files:");
+            p.Render.Info($"Deleted {deleted.Count} lock files:");
             foreach (var d in deleted)
                 Console.WriteLine($"  {d}");
         }
@@ -571,31 +563,30 @@ static class FileCommands
         return 0;
     }
 
-    private static int RunDeletePattern(string[] args, bool json)
+    internal static int RunDeletePattern(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file delete-pattern <glob> --in <dir>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe file delete-pattern <glob> --in <dir>"); return 1; }
 
         var pattern = args[0];
         var inIdx = Array.IndexOf(args, "--in");
         if (inIdx < 0 || inIdx + 1 >= args.Length)
         {
-            OutputFormatter.WriteError("--in <dir> is required. Specify a safe target directory.");
+            p.Render.Error("--in <dir> is required. Specify a safe target directory.");
             return 1;
         }
 
         var dir = args[inIdx + 1];
-        if (!ValidatePath(dir, "file delete-pattern")) return 1;
+        if (!ValidatePath(p, dir, "file delete-pattern")) return 1;
         if (!Directory.Exists(dir))
         {
-            OutputFormatter.WriteError($"Directory not found: {dir}");
+            p.Render.Error($"Directory not found: {dir}");
             return 1;
         }
 
-        // Validate directory is in safe list
         var dirName = Path.GetFileName(dir.TrimEnd('/', '\\'));
         if (!SafeDeleteDirs.Contains(dirName.ToLowerInvariant()))
         {
-            OutputFormatter.WriteBlocked($"file delete-pattern {pattern} --in {dir}",
+            p.Render.Blocked($"file delete-pattern {pattern} --in {dir}",
                 $"Directory '{dirName}' is not in the safe delete list",
                 $"Safe directories: {string.Join(", ", SafeDeleteDirs.Take(10))}...");
             return 1;
@@ -612,55 +603,55 @@ static class FileCommands
         }
         catch (Exception ex)
         {
-            OutputFormatter.WriteError(ex.Message);
+            p.Render.Error(ex.Message);
             return 1;
         }
 
-        if (json)
-            OutputFormatter.WriteJson(new { deleted, count = deleted.Count });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { deleted, count = deleted.Count });
         else
-            OutputFormatter.WriteSuccess($"Deleted {deleted.Count} files matching '{pattern}' in {dir}");
+            p.Render.Info($"Deleted {deleted.Count} files matching '{pattern}' in {dir}");
 
         return 0;
     }
 
-    private static int RunMove(string[] args, bool json)
+    internal static int RunMove(Ports p, string[] args)
     {
-        if (args.Length < 2) { OutputFormatter.WriteError("Usage: safe file move <src> <dest>"); return 1; }
+        if (args.Length < 2) { p.Render.Error("Usage: safe file move <src> <dest>"); return 1; }
         var src = args[0];
         var dest = args[1];
 
-        if (!ValidatePath(src, "file move (source)")) return 1;
-        if (!ValidatePath(dest, "file move (destination)")) return 1;
-        if (!File.Exists(src)) { OutputFormatter.WriteError($"Source not found: {src}"); return 1; }
+        if (!ValidatePath(p, src, "file move (source)")) return 1;
+        if (!ValidatePath(p, dest, "file move (destination)")) return 1;
+        if (!File.Exists(src)) { p.Render.Error($"Source not found: {src}"); return 1; }
 
-        // Check if file is git-tracked
-        var (code, _, _) = ProcessRunner.Run("git", ["ls-files", "--error-unmatch", src]);
-        if (code != 0)
+        if (!p.Git.IsFileTracked(src))
         {
-            OutputFormatter.WriteBlocked($"file move {src}",
-                "Only git-tracked files can be moved (ensuring recoverability)");
+            p.Render.Blocked($"file move {src}",
+                "Only git-tracked files can be moved (ensuring recoverability)",
+                "Track the file first (safe git add <file>) or use safe file copy");
             return 1;
         }
 
         if (File.Exists(dest))
         {
-            OutputFormatter.WriteBlocked("file move", "Destination already exists");
+            p.Render.Blocked("file move", "Destination already exists",
+                "Choose a different destination path");
             return 1;
         }
 
         // Use git mv so git tracks the rename
-        var result = ProcessRunner.Run("git", ["mv", src, dest]);
+        var result = p.Exec.Run("git", ["mv", src, dest]);
         if (result.ExitCode != 0)
         {
-            OutputFormatter.WriteError(result.Error);
+            p.Render.Error(result.StdErr);
             return 1;
         }
 
-        if (json)
-            OutputFormatter.WriteJson(new { source = src, destination = dest });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { source = src, destination = dest });
         else
-            OutputFormatter.WriteSuccess($"Moved: {src} -> {dest}");
+            p.Render.Info($"Moved: {src} -> {dest}");
         return 0;
     }
 }

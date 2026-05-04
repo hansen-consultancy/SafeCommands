@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-04
+
+### Added
+- New `IGitRepo` port (`SafeCommands.Infrastructure.Ports.IGitRepo`) with five structured probes — `IsRepo`, `IsWorkingTreeClean`, `IsFileTracked`, `HasPendingChanges`, `GetHeadStatus`. Replaces the ad-hoc `git rev-parse` / `git ls-files` / `git diff` calls that were duplicated between `GitCommands` (three rev-parses in `RunCommitAmend`) and `FileCommands` (two diffs in `RunDeleteTracked`, plus another `ls-files` in `RunMove`).
+- `GitRepoAdapter` real implementation; `FakeGitRepo` fluent-builder fake (`AsRepo`, `WithCleanTree`, `WithTracked(...)`, `WithPushedHead(...)`, etc.) for tests.
+- 37 new tests (`GitCommandsTests`, `FileCommandsTests`) covering the previously-impossible assertions: `safe git push --force` is blocked without spawning git; `safe git commit-amend` is blocked when HEAD is pushed (asserted via `FakeGitRepo`, no real repo required); `safe file delete-tracked` blocks untracked files and files with pending changes. Total test count: 133.
+
+### Changed
+- **(Behaviour change, scoped to migrated groups)** PR #3 of [#2](https://github.com/hansen-consultancy/SafeCommands/issues/2) extends the structured `Blocked` JSON envelope to **`git` and `file`**. Under `--json`, blocked commands in these groups now emit:
+  ```json
+  { "blocked": true, "command": "...", "reason": "...", "suggestion": "..." }
+  ```
+  Previously these groups still emitted Spectre markup under `--json`. Eight groups have now rolled over (bun, dotnet, docker, npm, pnpm, db, git, file); the remaining four (`env`, `process`, `proxy`, `generate`) still emit markup until each migrates in subsequent phases.
+- `Ports` record now carries a third port: `Ports(IExecutor Exec, IRenderer Render, IGitRepo Git)`.
+- `GitCommands` and `FileCommands` migrated to the direct-port handler shape (`Func<Ports, string[], int>`). `RunCommitAmend` now goes through `IGitRepo.GetHeadStatus()` (one probe) instead of three direct `rev-parse` calls; `RunDeleteTracked` goes through `IsFileTracked` + `HasPendingChanges` instead of three direct git invocations.
+
 ## [0.5.0] - 2026-05-01
 
 ### Added
