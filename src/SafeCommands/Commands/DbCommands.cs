@@ -20,7 +20,7 @@ static class DbCommands
     /// Flags that are NEVER allowed on any migration command. Shared across Prisma,
     /// Drizzle, and EF Core migrate commands.
     /// </summary>
-    private static readonly string[] DestructiveFlags =
+    private static readonly HashSet<string> DestructiveFlags =
     [
         "--force", "-f",
         "--force-reset",
@@ -29,7 +29,18 @@ static class DbCommands
         "--skip-generate",
     ];
 
-    private static Policy DestructivePolicy => Policy.Default.DenyFlags(DestructiveFlags);
+    private static readonly Policy DestructivePolicy = Policy.Default.DenyFlags([.. DestructiveFlags]);
+
+    /// <summary>
+    /// Substring tokens that mark destructive Artisan migration variants
+    /// (<c>migrate:fresh</c>, <c>migrate:reset</c>, <c>migrate:rollback</c>, <c>db:wipe</c>).
+    /// Used both by <see cref="ArtisanDestructivePolicy"/> and the offending-arg lookup
+    /// inside <see cref="RunArtisanMigrate"/>; keeping them in one place avoids drift.
+    /// </summary>
+    private static readonly string[] ArtisanDestructiveTerms = ["fresh", "reset", "rollback", "wipe"];
+
+    private static readonly Policy ArtisanDestructivePolicy =
+        Policy.Default.DenyArgsContaining(ArtisanDestructiveTerms);
 
     public static void Register(List<CommandDefinition> commands)
     {
@@ -167,13 +178,12 @@ static class DbCommands
     {
         // Block destructive artisan variants. Substring match catches embedded forms
         // like 'migrate:fresh' that exact flag-match would miss.
-        var policy = Policy.Default.DenyArgsContaining("fresh", "reset", "rollback", "wipe");
-        if (policy.Evaluate(args) is PolicyResult.Block)
+        if (ArtisanDestructivePolicy.Evaluate(args) is PolicyResult.Block)
         {
             var offending = args.FirstOrDefault(a =>
             {
                 var lo = a.ToLowerInvariant();
-                return lo.Contains("fresh") || lo.Contains("reset") || lo.Contains("rollback") || lo.Contains("wipe");
+                return ArtisanDestructiveTerms.Any(t => lo.Contains(t));
             }) ?? "";
             p.Render.Blocked($"artisan migrate {offending}",
                 "migrate:fresh, migrate:reset, migrate:rollback, and db:wipe drop tables",

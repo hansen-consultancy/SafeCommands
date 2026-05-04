@@ -10,6 +10,8 @@ static class DockerCommands
     private static readonly HashSet<string> BuildAllowed = ["-t", "--tag", "-f", "--file", "--target", "--build-arg", "--no-cache", "--pull", "--progress", "--platform"];
     private static readonly HashSet<string> ComposeUpAllowed = ["-d", "--detach", "--build", "--no-deps", "--force-recreate", "--remove-orphans", "--wait"];
 
+    private static readonly Policy ComposeDownPolicy = Policy.Default.DenyFlags("-v", "--volumes", "--rmi");
+
     public static void Register(List<CommandDefinition> commands)
     {
         commands.AddRange([
@@ -107,8 +109,7 @@ static class DockerCommands
 
     internal static int RunComposeDown(Ports p, string[] args)
     {
-        var policy = Policy.Default.DenyFlags("-v", "--volumes", "--rmi");
-        if (policy.Evaluate(args) is PolicyResult.Block b)
+        if (ComposeDownPolicy.Evaluate(args) is PolicyResult.Block)
         {
             p.Render.Blocked(
                 $"docker compose down {string.Join(' ', args)}".TrimEnd(),

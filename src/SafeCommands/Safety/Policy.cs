@@ -64,12 +64,13 @@ sealed record AllowOnlyScriptsRule(IReadOnlyCollection<string> Allowed) : Rule
 
 sealed record DenyFlagsRule(IReadOnlyCollection<string> Flags) : Rule
 {
+    private readonly HashSet<string> _deny = Flags.Select(f => f.ToLowerInvariant()).ToHashSet();
+
     public override PolicyResult Evaluate(string[] args)
     {
-        var deny = Flags.Select(f => f.ToLowerInvariant()).ToHashSet();
         foreach (var arg in args)
         {
-            if (deny.Contains(arg.ToLowerInvariant()))
+            if (_deny.Contains(arg.ToLowerInvariant()))
             {
                 return new PolicyResult.Block(
                     $"Flag '{arg}' is not allowed",
@@ -82,14 +83,16 @@ sealed record DenyFlagsRule(IReadOnlyCollection<string> Flags) : Rule
 
 sealed record DenyArgsContainingRule(IReadOnlyCollection<string> Needles) : Rule
 {
+    private readonly string[] _loweredNeedles = Needles.Select(n => n.ToLowerInvariant()).ToArray();
+
     public override PolicyResult Evaluate(string[] args)
     {
         foreach (var arg in args)
         {
             var lower = arg.ToLowerInvariant();
-            foreach (var needle in Needles)
+            foreach (var needle in _loweredNeedles)
             {
-                if (lower.Contains(needle.ToLowerInvariant()))
+                if (lower.Contains(needle))
                 {
                     return new PolicyResult.Block(
                         $"Argument '{arg}' contains the disallowed term '{needle}'",
