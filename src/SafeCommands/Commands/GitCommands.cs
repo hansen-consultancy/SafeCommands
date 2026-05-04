@@ -11,7 +11,13 @@ static class GitCommands
     private static readonly HashSet<string> DiffAllowedFlags = ["--staged", "--cached", "--name-only", "--name-status", "--stat", "--shortstat", "--numstat", "--diff-filter", "--no-color", "--color=never", "--unified", "-U"];
     private static readonly HashSet<string> AddBlockedArgs = ["-A", "--all", "."];
 
-    private static readonly Policy PushPolicy = Policy.Default.DenyFlags("--force", "-f", "--delete", "--no-verify");
+    /// <summary>
+    /// Flags that <c>safe git push</c> rejects. Shared between <see cref="PushPolicy"/> (which
+    /// gates the spawn) and the offending-arg lookup that builds the Blocked envelope label,
+    /// so the two can never drift the way they did pre-extraction.
+    /// </summary>
+    private static readonly HashSet<string> PushBlockedFlags = ["--force", "-f", "--delete", "--no-verify"];
+    private static readonly Policy PushPolicy = Policy.Default.DenyFlags([.. PushBlockedFlags]);
     private static readonly Policy CommitPolicy = Policy.Default.DenyFlags("--no-verify", "-n");
 
     public static void Register(List<CommandDefinition> commands)
@@ -298,8 +304,7 @@ static class GitCommands
 
         if (PushPolicy.Evaluate(args) is PolicyResult.Block)
         {
-            var offending = args.FirstOrDefault(a =>
-                a is "--force" or "-f" or "--delete" or "--no-verify") ?? "";
+            var offending = args.FirstOrDefault(a => PushBlockedFlags.Contains(a)) ?? "";
             p.Render.Blocked($"git push {offending}".TrimEnd(),
                 "Force push, branch deletion, and hook bypass are not allowed",
                 "safe git push (use --force-with-lease if you need to overwrite a tracked branch)");

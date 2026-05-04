@@ -25,9 +25,10 @@ interface IGitRepo
     bool HasPendingChanges(string relativePath);
 
     /// <summary>
-    /// Status of HEAD relative to <c>origin/&lt;branch&gt;</c>. <see cref="HeadStatus.IsPushed"/>
-    /// is true when HEAD's hash equals the upstream's hash. Used by <c>RunCommitAmend</c> to
-    /// block amends on already-published commits.
+    /// Status of HEAD relative to its configured upstream tracking branch (whatever remote
+    /// is set — not hard-coded to <c>origin</c>). <see cref="HeadStatus.IsPushed"/> is true
+    /// when an upstream is configured and HEAD has no local-only commits ahead of it. Used
+    /// by <c>RunCommitAmend</c> to block amends on already-published commits.
     /// </summary>
     HeadStatus GetHeadStatus();
 }
