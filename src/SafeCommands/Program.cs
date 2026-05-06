@@ -99,6 +99,27 @@ if (cmd == null)
     return 1;
 }
 
+// Per-command help: `safe <group> <command> --help|-h` prints usage without
+// invoking the handler (so `--help` isn't mistaken for a positional argument).
+if (commandArgs.Any(a => a is "--help" or "-h"))
+{
+    if (jsonOutput)
+        ports.Render.Json(new
+        {
+            command = cmd.FullName,
+            description = cmd.Description,
+            usage = cmd.Usage,
+            safety = cmd.SafetyLabel,
+        });
+    else
+    {
+        ports.Render.Info($"safe {cmd.FullName} — {cmd.Description}");
+        ports.Render.Info($"Usage: {cmd.Usage}");
+        ports.Render.Info($"Safety: {cmd.SafetyLabel}");
+    }
+    return 0;
+}
+
 // Execute the command
 try
 {

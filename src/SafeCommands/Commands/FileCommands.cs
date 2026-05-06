@@ -591,13 +591,30 @@ static class FileCommands
             return 1;
         }
 
-        // Validate directory is in safe list
-        var dirName = Path.GetFileName(dir.TrimEnd('/', '\\'));
-        if (!SafeDeleteDirs.Contains(dirName.ToLowerInvariant()))
+        // Validate target is inside a safe directory. We walk from the target up
+        // toward the project root: if any ancestor segment matches a safe dir, the
+        // target is within an ephemeral build/cache tree (e.g. tmp/.dotnet is fine
+        // because its parent `tmp` is a safe dir).
+        var projectRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
+        var current = new DirectoryInfo(Path.GetFullPath(dir));
+        var matched = false;
+        while (current != null
+            && !current.FullName.Equals(projectRoot, StringComparison.OrdinalIgnoreCase))
         {
+            if (SafeDeleteDirs.Contains(current.Name.ToLowerInvariant()))
+            {
+                matched = true;
+                break;
+            }
+            current = current.Parent;
+        }
+
+        if (!matched)
+        {
+            var dirName = Path.GetFileName(dir.TrimEnd('/', '\\'));
             OutputFormatter.WriteBlocked($"file delete-pattern {pattern} --in {dir}",
-                $"Directory '{dirName}' is not in the safe delete list",
-                $"Safe directories: {string.Join(", ", SafeDeleteDirs.Take(10))}...");
+                $"'{dir}' is not inside a safe delete directory",
+                $"Target (or an ancestor) must be one of: {string.Join(", ", SafeDeleteDirs.Take(10))}...");
             return 1;
         }
 
