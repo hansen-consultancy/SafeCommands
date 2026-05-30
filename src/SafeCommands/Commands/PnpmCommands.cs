@@ -1,19 +1,11 @@
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
 
 namespace SafeCommands.Commands;
 
 static class PnpmCommands
 {
-    private static readonly HashSet<string> AllowedScripts =
-    [
-        "build", "dev", "start", "test", "lint", "format",
-        "typecheck", "check", "compile", "watch", "serve", "preview",
-        "generate", "codegen", "migrate", "seed", "prisma",
-        "storybook", "e2e", "cypress", "playwright",
-        "clean", "prebuild", "postbuild",
-    ];
-
     public static void Register(List<CommandDefinition> commands)
     {
         commands.AddRange([
@@ -25,7 +17,8 @@ static class PnpmCommands
 
             // Safe writes - pnpm doesn't run lifecycle scripts by default (safer than npm)
             new("pnpm", "install", "Install dependencies (lifecycle scripts disabled by default)", "safe pnpm install", SafetyLevel.SafeWrite, RunInstall),
-            new("pnpm", "run", "Run package script (allowed list)", "safe pnpm run <script>", SafetyLevel.SafeWrite, RunScript),
+            new("pnpm", "run", "Run package script (allowed list)", "safe pnpm run <script>", SafetyLevel.SafeWrite, RunScript)
+                { Policy = Policy.Default.AllowOnlyFirstArg(PackageScripts.Allowed, "Script") },
             new("pnpm", "test", "Run tests", "safe pnpm test", SafetyLevel.SafeWrite, RunTest),
             new("pnpm", "build", "Build project", "safe pnpm build", SafetyLevel.SafeWrite, RunBuild),
             new("pnpm", "store-prune", "Prune unreferenced packages from store", "safe pnpm store-prune", SafetyLevel.SafeWrite, RunStorePrune),
@@ -64,16 +57,6 @@ static class PnpmCommands
             OutputFormatter.WriteError("Usage: safe pnpm run <script>");
             return 1;
         }
-
-        var script = args[0].ToLowerInvariant();
-        if (!AllowedScripts.Contains(script))
-        {
-            OutputFormatter.WriteBlocked($"pnpm run {script}",
-                $"Script '{script}' is not in the allowed list",
-                $"Allowed: {string.Join(", ", AllowedScripts.Take(15))}...");
-            return 1;
-        }
-
         return RunPnpm(["run", ..args], json);
     }
 

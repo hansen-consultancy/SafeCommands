@@ -1,19 +1,11 @@
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
 
 namespace SafeCommands.Commands;
 
 static class NpmCommands
 {
-    private static readonly HashSet<string> AllowedScripts =
-    [
-        "build", "dev", "start", "test", "lint", "format",
-        "typecheck", "check", "compile", "watch", "serve", "preview",
-        "generate", "codegen", "migrate", "seed", "prisma",
-        "storybook", "e2e", "cypress", "playwright",
-        "clean", "prebuild", "postbuild",
-    ];
-
     public static void Register(List<CommandDefinition> commands)
     {
         commands.AddRange([
@@ -26,10 +18,12 @@ static class NpmCommands
             // Targeted writes - install runs postinstall scripts (supply chain risk)
             new("npm", "install", "Install dependencies (runs postinstall scripts!)", "safe npm install [<package>] [--ignore-scripts]", SafetyLevel.CheckedWrite, RunInstall),
             new("npm", "ci", "Clean install from lockfile (runs postinstall scripts!)", "safe npm ci [--ignore-scripts]", SafetyLevel.CheckedWrite, RunCi),
-            new("npm", "run", "Run package script (allowed list)", "safe npm run <script>", SafetyLevel.SafeWrite, RunScript),
+            new("npm", "run", "Run package script (allowed list)", "safe npm run <script>", SafetyLevel.SafeWrite, RunScript)
+                { Policy = Policy.Default.AllowOnlyFirstArg(PackageScripts.Allowed, "Script") },
             new("npm", "test", "Run tests", "safe npm test", SafetyLevel.SafeWrite, RunTest),
             new("npm", "build", "Build project", "safe npm build", SafetyLevel.SafeWrite, RunBuild),
-            new("npm", "audit-fix", "Fix audit issues (no --force)", "safe npm audit-fix", SafetyLevel.CheckedWrite, RunAuditFix),
+            new("npm", "audit-fix", "Fix audit issues (no --force)", "safe npm audit-fix", SafetyLevel.CheckedWrite, RunAuditFix)
+                { Policy = Policy.Default.BlockFlags(["--force"], "Force audit fix can install breaking major version changes", "safe npm audit-fix (without --force) for safe semver-compatible fixes") },
             new("npm", "cache-clean", "Clean npm cache", "safe npm cache-clean", SafetyLevel.SafeWrite, RunCacheClean),
             new("npm", "dedupe", "Deduplicate dependencies", "safe npm dedupe", SafetyLevel.SafeWrite, RunDedupe),
         ]);
@@ -100,33 +94,14 @@ static class NpmCommands
         if (args.Length == 0)
         {
             OutputFormatter.WriteError("Usage: safe npm run <script>");
-            OutputFormatter.WriteWarning($"Allowed scripts: {string.Join(", ", AllowedScripts)}");
-            return 1;
-        }
-
-        var script = args[0].ToLowerInvariant();
-        if (!AllowedScripts.Contains(script))
-        {
-            OutputFormatter.WriteBlocked($"npm run {script}",
-                $"Script '{script}' is not in the allowed list",
-                $"Allowed: {string.Join(", ", AllowedScripts.Take(15))}...");
+            OutputFormatter.WriteWarning($"Allowed scripts: {string.Join(", ", PackageScripts.Allowed)}");
             return 1;
         }
 
         return RunNpm(["run", ..args], json);
     }
 
-    private static int RunAuditFix(string[] args, bool json)
-    {
-        if (args.Contains("--force"))
-        {
-            OutputFormatter.WriteBlocked("npm audit fix --force",
-                "Force audit fix can install breaking major version changes",
-                "safe npm audit-fix (without --force) for safe semver-compatible fixes");
-            return 1;
-        }
-        return RunNpm(["audit", "fix", ..args], json);
-    }
+    private static int RunAuditFix(string[] args, bool json) => RunNpm(["audit", "fix", ..args], json);
 
     private static int RunTest(string[] args, bool json) => RunNpm(["test", ..args], json);
     private static int RunBuild(string[] args, bool json) => RunNpm(["run", "build", ..args], json);

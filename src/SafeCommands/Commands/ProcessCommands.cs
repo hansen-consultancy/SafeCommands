@@ -3,6 +3,7 @@ using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
 
 namespace SafeCommands.Commands;
 
@@ -28,7 +29,8 @@ static class ProcessCommands
             new("process", "find", "Find process by name", "safe process find <name>", SafetyLevel.ReadOnly, RunFind),
             new("process", "ports", "Show listening ports", "safe process ports", SafetyLevel.ReadOnly, RunPorts),
             new("process", "kill-port", "Kill process on specific port", "safe process kill-port <port>", SafetyLevel.CheckedWrite, RunKillPort),
-            new("process", "kill-name", "Kill process by name (dev tools only)", "safe process kill-name <name>", SafetyLevel.CheckedWrite, RunKillName),
+            new("process", "kill-name", "Kill process by name (dev tools only)", "safe process kill-name <name>", SafetyLevel.CheckedWrite, RunKillName)
+                { Policy = Policy.Default.AllowOnlyFirstArg(AllowedKillNames, "Process") },
         ]);
     }
 
@@ -207,14 +209,6 @@ static class ProcessCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe process kill-name <name>"); return 1; }
         var name = args[0].ToLowerInvariant();
-
-        if (!AllowedKillNames.Contains(name))
-        {
-            OutputFormatter.WriteBlocked($"process kill-name {name}",
-                $"Process '{name}' is not in the allowed kill list",
-                $"Allowed: {string.Join(", ", AllowedKillNames.Take(10))}...");
-            return 1;
-        }
 
         var processes = Process.GetProcessesByName(args[0]);
         if (processes.Length == 0)

@@ -1,5 +1,6 @@
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
 
 namespace SafeCommands.Commands;
 
@@ -8,6 +9,7 @@ static class DockerCommands
     private static readonly HashSet<string> ComposeDownBlocked = ["-v", "--volumes", "--rmi"];
     private static readonly HashSet<string> BuildAllowed = ["-t", "--tag", "-f", "--file", "--target", "--build-arg", "--no-cache", "--pull", "--progress", "--platform"];
     private static readonly HashSet<string> ComposeUpAllowed = ["-d", "--detach", "--build", "--no-deps", "--force-recreate", "--remove-orphans", "--wait"];
+    private static readonly HashSet<string> DockerBuildValueFlags = ["-t", "--tag", "-f", "--file", "--target", "--build-arg", "--platform", "--progress"];
 
     public static void Register(List<CommandDefinition> commands)
     {
@@ -24,9 +26,11 @@ static class DockerCommands
             new("docker", "volume-ls", "List volumes", "safe docker volume-ls", SafetyLevel.ReadOnly, RunVolumeLs),
 
             // Safe writes
-            new("docker", "build", "Build image", "safe docker build [-t <tag>] [-f <dockerfile>]", SafetyLevel.SafeWrite, RunBuild),
+            new("docker", "build", "Build image", "safe docker build [-t <tag>] [-f <dockerfile>]", SafetyLevel.SafeWrite, RunBuild)
+                { Policy = Policy.Default.AllowOnlyFlags(BuildAllowed, DockerBuildValueFlags, keepPositionals: true) },
             new("docker", "compose-build", "Build compose services", "safe docker compose-build [<service>]", SafetyLevel.SafeWrite, RunComposeBuild),
-            new("docker", "compose-up", "Start compose services", "safe docker compose-up [-d] [<service>]", SafetyLevel.SafeWrite, RunComposeUp),
+            new("docker", "compose-up", "Start compose services", "safe docker compose-up [-d] [<service>]", SafetyLevel.SafeWrite, RunComposeUp)
+                { Policy = Policy.Default.AllowOnlyFlags(ComposeUpAllowed, [], keepPositionals: true) },
             new("docker", "compose-restart", "Restart compose service", "safe docker compose-restart [<service>]", SafetyLevel.SafeWrite, RunComposeRestart),
             new("docker", "compose-pull", "Pull compose images", "safe docker compose-pull [<service>]", SafetyLevel.SafeWrite, RunComposePull),
 
@@ -34,7 +38,8 @@ static class DockerCommands
             new("docker", "stop", "Stop a running container", "safe docker stop <container>", SafetyLevel.CheckedWrite, RunStop),
             new("docker", "start", "Start a stopped container", "safe docker start <container>", SafetyLevel.CheckedWrite, RunStart),
             new("docker", "restart", "Restart a container", "safe docker restart <container>", SafetyLevel.CheckedWrite, RunRestart),
-            new("docker", "compose-down", "Stop compose services (no -v)", "safe docker compose-down", SafetyLevel.CheckedWrite, RunComposeDown),
+            new("docker", "compose-down", "Stop compose services (no -v)", "safe docker compose-down", SafetyLevel.CheckedWrite, RunComposeDown)
+                { Policy = Policy.Default.BlockFlags(ComposeDownBlocked, "Removing volumes/images during compose down is not allowed", "safe docker compose-down (without -v)") },
         ]);
     }
 
@@ -83,19 +88,11 @@ static class DockerCommands
     }
 
     // Safe writes
-    private static int RunBuild(string[] args, bool json)
-    {
-        var filtered = FilterFlags(args, BuildAllowed);
-        return RunDocker(["build", ..filtered, "."], json);
-    }
+    private static int RunBuild(string[] args, bool json) => RunDocker(["build", ..args, "."], json);
 
     private static int RunComposeBuild(string[] args, bool json) => RunDockerCompose(["build", ..args], json);
 
-    private static int RunComposeUp(string[] args, bool json)
-    {
-        var filtered = FilterFlags(args, ComposeUpAllowed);
-        return RunDockerCompose(["up", ..filtered], json);
-    }
+    private static int RunComposeUp(string[] args, bool json) => RunDockerCompose(["up", ..args], json);
 
     private static int RunComposePull(string[] args, bool json) => RunDockerCompose(["pull", ..args], json);
     private static int RunComposeRestart(string[] args, bool json) => RunDockerCompose(["restart", ..args], json);
@@ -119,42 +116,5 @@ static class DockerCommands
         return RunDocker(["restart", args[0]], json);
     }
 
-    private static int RunComposeDown(string[] args, bool json)
-    {
-        foreach (var arg in args)
-        {
-            if (ComposeDownBlocked.Contains(arg))
-            {
-                OutputFormatter.WriteBlocked($"docker compose down {arg}",
-                    "Removing volumes/images during compose down is not allowed",
-                    "safe docker compose-down (without -v)");
-                return 1;
-            }
-        }
-        return RunDockerCompose(["down", ..args], json);
-    }
-
-    private static string[] FilterFlags(string[] args, HashSet<string> allowed)
-    {
-        var result = new List<string>();
-        for (int i = 0; i < args.Length; i++)
-        {
-            var arg = args[i];
-            if (arg.StartsWith('-'))
-            {
-                var flagBase = arg.Contains('=') ? arg[..arg.IndexOf('=')] : arg;
-                if (allowed.Contains(flagBase))
-                {
-                    result.Add(arg);
-                    if (!arg.Contains('=') && i + 1 < args.Length && !args[i + 1].StartsWith('-'))
-                        result.Add(args[++i]);
-                }
-            }
-            else
-            {
-                result.Add(arg); // positional args pass through
-            }
-        }
-        return result.ToArray();
-    }
+    private static int RunComposeDown(string[] args, bool json) => RunDockerCompose(["down", ..args], json);
 }

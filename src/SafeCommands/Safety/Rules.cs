@@ -1,7 +1,7 @@
 namespace SafeCommands.Safety;
 
 /// <summary>Blocks if any arg, normalized via <see cref="Flag.Base"/>, is in the flag set.</summary>
-sealed record BlockFlagsRule(IReadOnlyCollection<string> Flags, string Reason, string Suggestion) : Rule
+sealed record BlockFlagsRule(IReadOnlyCollection<string> Flags, string Reason, string? Suggestion) : Rule
 {
     private readonly HashSet<string> _flags = Flags.Select(f => f.ToLowerInvariant()).ToHashSet();
 
