@@ -37,7 +37,8 @@ else
 }
 
 // Wire infrastructure ports once. From here every handler receives the same Ports record.
-var ports = new Ports(new ProcessExecutor(), new ConsoleRenderer(jsonOutput));
+var exec = new ProcessExecutor();
+var ports = new Ports(exec, new ConsoleRenderer(jsonOutput), new GitRepoProbe(exec), new FileSystemWorkspace());
 
 // Handle meta commands (still on legacy signature — not migrated in PR #1)
 var first = cliArgs[0].ToLowerInvariant();
@@ -123,7 +124,7 @@ if (commandArgs.Any(a => a is "--help" or "-h"))
 // Execute the command
 try
 {
-    return cmd.Handler(ports, commandArgs);
+    return CommandDispatcher.Execute(cmd, ports, group, command, commandArgs);
 }
 catch (Exception ex)
 {
