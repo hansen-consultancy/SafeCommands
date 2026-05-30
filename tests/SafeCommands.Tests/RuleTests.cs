@@ -235,6 +235,96 @@ public class RuleTests
         Assert.False(policy.Evaluate(["/etc/passwd"], Ctx(ws: ws)).IsBlocked);
     }
 
+    // ------------------------------------------------------------- PathArg.Positional
+
+    [Fact]
+    public void PathArg_Positional_Index0_ReturnsFirstPositional()
+        => Assert.Equal("a", new PathArg.Positional(0, []).Extract(["a", "b"]));
+
+    [Fact]
+    public void PathArg_Positional_Index1_ReturnsSecondPositional()
+        => Assert.Equal("b", new PathArg.Positional(1, []).Extract(["a", "b"]));
+
+    [Fact]
+    public void PathArg_Positional_SkipsValueFlagAndItsValue()
+        // ValueFlags ["--algorithm"] → "--algorithm" and "sha256" are skipped, "p" is positional 0.
+        => Assert.Equal("p", new PathArg.Positional(0, ["--algorithm"]).Extract(["--algorithm", "sha256", "p"]));
+
+    [Fact]
+    public void PathArg_Positional_IndexBeyondPositionals_ReturnsNull()
+        => Assert.Null(new PathArg.Positional(5, []).Extract(["a", "b"]));
+
+    [Fact]
+    public void PathArg_Positional_SkipsBooleanFlags()
+        // "--x" is an undeclared boolean flag → skipped; "p" is positional 0.
+        => Assert.Equal("p", new PathArg.Positional(0, []).Extract(["--x", "p"]));
+
+    [Fact]
+    public void PathArg_Positional_DecoyValueFlagName_SelectsLeadingPositional_NotTrailing()
+        // B1 regression: when the value-flag's NAME ("sha256") also appears as a leading bare
+        // positional, the LEADING positional is selected — never the trailing token. So a decoy
+        // "sha256 <outside> --algorithm sha256" cannot smuggle <outside> past the policy.
+        => Assert.Equal("sha256",
+            new PathArg.Positional(0, ["--algorithm"]).Extract(["sha256", "/etc/passwd", "--algorithm", "sha256"]));
+
+    // ------------------------------------------------------------- PathArg.FlagValue
+
+    [Fact]
+    public void PathArg_FlagValue_ReturnsTokenAfterFlag()
+        => Assert.Equal("d", new PathArg.FlagValue("--in").Extract(["--in", "d"]));
+
+    [Fact]
+    public void PathArg_FlagValue_FlagAbsent_ReturnsNull()
+        => Assert.Null(new PathArg.FlagValue("--in").Extract(["x", "y"]));
+
+    [Fact]
+    public void PathArg_FlagValue_FlagIsLastToken_ReturnsNull()
+        => Assert.Null(new PathArg.FlagValue("--in").Extract(["--in"]));
+
+    // ------------------------------------------------- RequireWithinSafeDeleteDir
+
+    private static Policy SafeDeletePolicy()
+        => Policy.Default.RequireWithinSafeDeleteDir(new PathArg.FlagValue("--in"), ["bin", "tmp"]);
+
+    [Fact]
+    public void RequireWithinSafeDeleteDir_SafeDirSegment_Allows()
+    {
+        var ws = new FakeWorkspace { ProjectRoot = "/proj" };
+        Assert.False(SafeDeletePolicy().Evaluate(["*.log", "--in", "/proj/bin"], Ctx(ws: ws)).IsBlocked);
+    }
+
+    [Fact]
+    public void RequireWithinSafeDeleteDir_SafeAncestorSegment_Allows()
+    {
+        // Ancestor "tmp" is a safe dir — the nested ".dotnet" leaf is allowed via the ancestor walk.
+        var ws = new FakeWorkspace { ProjectRoot = "/proj" };
+        Assert.False(SafeDeletePolicy().Evaluate(["*.log", "--in", "/proj/tmp/.dotnet"], Ctx(ws: ws)).IsBlocked);
+    }
+
+    [Fact]
+    public void RequireWithinSafeDeleteDir_NonSafeDir_Blocks()
+    {
+        var ws = new FakeWorkspace { ProjectRoot = "/proj" };
+        var block = SafeDeletePolicy().Evaluate(["*.log", "--in", "/proj/src"], Ctx(ws: ws)).Block;
+        Assert.NotNull(block);
+        Assert.Contains("is not inside a safe delete directory", block.Reason);
+    }
+
+    [Fact]
+    public void RequireWithinSafeDeleteDir_ProjectRootItself_Blocks()
+    {
+        // The root is within the project but is not itself a safe dir (resolved.Length == root.Length).
+        var ws = new FakeWorkspace { ProjectRoot = "/proj" };
+        var block = SafeDeletePolicy().Evaluate(["*.log", "--in", "/proj"], Ctx(ws: ws)).Block;
+        Assert.NotNull(block);
+        Assert.Contains("is not inside a safe delete directory", block.Reason);
+    }
+
+    [Fact]
+    public void RequireWithinSafeDeleteDir_MissingInFlag_Allows()
+        // FlagValue.Extract returns null → Allow (the handler usage-errors on the missing --in).
+        => Assert.False(SafeDeletePolicy().Evaluate(["*.log"], Ctx(ws: new FakeWorkspace { ProjectRoot = "/proj" })).IsBlocked);
+
     // ---------------------------------------------- Require* git-state rules
 
     [Fact]

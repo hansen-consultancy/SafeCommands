@@ -60,8 +60,17 @@ sealed record Policy(IReadOnlyList<Rule> Rules)
     public Policy AllowSubcommands(IReadOnlyList<Subcommand> subcommands)
         => this with { Rules = [.. Rules, new AllowSubcommandsRule(subcommands)] };
 
+    /// <summary>Convenience for the common case: the <paramref name="argIndex"/>-th POSITIONAL
+    /// argument (flags and value-flag values are skipped — see <see cref="PathArg.Positional"/>),
+    /// NOT the raw arg-vector index. Paths behind a flag use the <see cref="PathArg"/> overload.</summary>
     public Policy RequirePathWithinProject(int argIndex = 0)
-        => this with { Rules = [.. Rules, new RequirePathWithinProjectRule(argIndex)] };
+        => RequirePathWithinProject(new PathArg.Positional(argIndex, []));
+
+    public Policy RequirePathWithinProject(PathArg target)
+        => this with { Rules = [.. Rules, new RequirePathWithinProjectRule(target)] };
+
+    public Policy RequireWithinSafeDeleteDir(PathArg target, IReadOnlyCollection<string> safeDirs)
+        => this with { Rules = [.. Rules, new RequireWithinSafeDeleteDirRule(target, safeDirs)] };
 
     public Policy RequireGitRepo()
         => this with { Rules = [.. Rules, new RequireGitRepoRule()] };

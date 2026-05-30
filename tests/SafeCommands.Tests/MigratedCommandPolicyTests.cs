@@ -314,6 +314,168 @@ public class MigratedCommandPolicyTests
         Assert.True(policy.Evaluate(["definitely-not-a-script"], Ctx()).IsBlocked);
     }
 
+    // ============================================================ file (path containment)
+
+    // A FakeWorkspace with identity Resolve and the default within-predicate
+    // (p == /proj || p.StartsWith("/proj/")) — pins the wired policy without filesystem dependence.
+    private static SafetyContext FileCtx() => Ctx(ws: new FakeWorkspace { ProjectRoot = "/proj" });
+
+    // --- Single-positional, one per safety level (read-only / safe-write / checked-write) ---
+
+    [Theory]
+    [InlineData("read")]      // ReadOnly
+    [InlineData("mkdir")]     // SafeWrite
+    [InlineData("delete-tracked")] // CheckedWrite
+    public void File_SinglePositional_InsideRoot_Allowed(string cmd)
+        => Assert.False(P("file", cmd).Evaluate(["/proj/src/x.cs"], FileCtx()).IsBlocked);
+
+    [Theory]
+    [InlineData("read")]
+    [InlineData("mkdir")]
+    [InlineData("delete-tracked")]
+    public void File_SinglePositional_OutsideRoot_Blocked(string cmd)
+    {
+        var block = P("file", cmd).Evaluate(["/etc/passwd"], FileCtx()).Block;
+        Assert.NotNull(block);
+        Assert.Contains("is outside the project directory", block.Reason);
+    }
+
+    // --- Absent path → Allow (handler's "." default / usage error takes over) ---
+
+    [Fact]
+    public void File_List_NoPositional_Allowed()
+        => Assert.False(P("file", "list").Evaluate([], FileCtx()).IsBlocked);
+
+    [Fact]
+    public void File_DeleteTemp_NoPositional_Allowed()
+        => Assert.False(P("file", "delete-temp").Evaluate([], FileCtx()).IsBlocked);
+
+    // --- find: --in flag value ---
+
+    [Fact]
+    public void File_Find_InsideRoot_Allowed()
+        => Assert.False(P("file", "find").Evaluate(["*.cs", "--in", "/proj/src"], FileCtx()).IsBlocked);
+
+    [Fact]
+    public void File_Find_OutsideRoot_Blocked()
+        => Assert.True(P("file", "find").Evaluate(["*.cs", "--in", "/etc"], FileCtx()).IsBlocked);
+
+    [Fact]
+    public void File_Find_NoInFlag_Allowed()
+        // No --in → FlagValue.Extract returns null → Allow (handler defaults to ".").
+        => Assert.False(P("file", "find").Evaluate(["*.cs"], FileCtx()).IsBlocked);
+
+    // --- copy / move: two-path chain, short-circuit on first offending path ---
+
+    [Theory]
+    [InlineData("copy")]
+    [InlineData("move")]
+    public void File_TwoPath_BothInside_Allowed(string cmd)
+        => Assert.False(P("file", cmd).Evaluate(["/proj/a", "/proj/b"], FileCtx()).IsBlocked);
+
+    [Theory]
+    [InlineData("copy")]
+    [InlineData("move")]
+    public void File_TwoPath_SourceOutside_Blocked(string cmd)
+    {
+        var block = P("file", cmd).Evaluate(["/etc/x", "/proj/b"], FileCtx()).Block;
+        Assert.NotNull(block);
+        Assert.Contains("/etc/x", block.Reason);
+        Assert.Contains("is outside the project directory", block.Reason);
+    }
+
+    [Theory]
+    [InlineData("copy")]
+    [InlineData("move")]
+    public void File_TwoPath_DestinationOutside_Blocked(string cmd)
+    {
+        var block = P("file", cmd).Evaluate(["/proj/a", "/etc/b"], FileCtx()).Block;
+        Assert.NotNull(block);
+        Assert.Contains("/etc/b", block.Reason);
+        Assert.Contains("is outside the project directory", block.Reason);
+    }
+
+    // --- delete-pattern: within-project THEN safe-dir chain ---
+
+    [Fact]
+    public void File_DeletePattern_SafeDirSegment_Allowed()
+        => Assert.False(P("file", "delete-pattern").Evaluate(["*.log", "--in", "/proj/bin"], FileCtx()).IsBlocked);
+
+    [Fact]
+    public void File_DeletePattern_SafeAncestorSegment_Allowed()
+        // Ancestor "tmp" is a safe dir — proves the segment-by-segment ancestor walk.
+        => Assert.False(P("file", "delete-pattern").Evaluate(["*.log", "--in", "/proj/tmp/.dotnet"], FileCtx()).IsBlocked);
+
+    [Fact]
+    public void File_DeletePattern_WithinButNotSafeDir_Blocked()
+    {
+        var block = P("file", "delete-pattern").Evaluate(["*.log", "--in", "/proj/src"], FileCtx()).Block;
+        Assert.NotNull(block);
+        Assert.Contains("is not inside a safe delete directory", block.Reason);
+    }
+
+    [Fact]
+    public void File_DeletePattern_OutsideProject_BlocksWithWithinReasonFirst()
+    {
+        // The within rule is chained FIRST, so it fires before the safe-dir rule for an outside path.
+        var block = P("file", "delete-pattern").Evaluate(["*.log", "--in", "/etc/evil"], FileCtx()).Block;
+        Assert.NotNull(block);
+        Assert.Contains("is outside the project directory", block.Reason);
+    }
+
+    [Fact]
+    public void File_DeletePattern_ProjectRootItself_Blocked()
+    {
+        // The root is within the project but is not itself a safe delete dir.
+        var block = P("file", "delete-pattern").Evaluate(["*.log", "--in", "/proj"], FileCtx()).Block;
+        Assert.NotNull(block);
+        Assert.Contains("is not inside a safe delete directory", block.Reason);
+    }
+
+    // ============================================================ generate hash-file (Positional w/ --algorithm skip)
+
+    [Fact]
+    public void Generate_HashFile_InsideRoot_Allowed()
+        => Assert.False(P("generate", "hash-file").Evaluate(["/proj/file"], FileCtx()).IsBlocked);
+
+    [Fact]
+    public void Generate_HashFile_OutsideRoot_Blocked()
+        => Assert.True(P("generate", "hash-file").Evaluate(["/etc/passwd"], FileCtx()).IsBlocked);
+
+    [Fact]
+    public void Generate_HashFile_AlgorithmBeforePath_SkipsValue_BlocksOutsidePath()
+    {
+        // SECURITY: the path after the skipped --algorithm value is the one validated.
+        var block = P("generate", "hash-file").Evaluate(["--algorithm", "sha256", "/etc/passwd"], FileCtx()).Block;
+        Assert.NotNull(block);
+        Assert.Contains("is outside the project directory", block.Reason);
+    }
+
+    [Fact]
+    public void Generate_HashFile_AlgorithmFlagCaseInsensitive_SkipsValue_BlocksOutsidePath()
+    {
+        // SECURITY HOLE GUARD: value-flag skip is case-insensitive. If "--ALGORITHM" is NOT
+        // recognized, "sha256" becomes the validated positional (inside-by-coincidence) and
+        // "/etc/passwd" slips through. This must BLOCK.
+        var block = P("generate", "hash-file").Evaluate(["--ALGORITHM", "sha256", "/etc/passwd"], FileCtx()).Block;
+        Assert.NotNull(block);
+        Assert.Contains("is outside the project directory", block.Reason);
+    }
+
+    [Fact]
+    public void Generate_HashFile_PathThenAlgorithm_Allowed()
+        => Assert.False(P("generate", "hash-file").Evaluate(["/proj/file", "--algorithm", "sha256"], FileCtx()).IsBlocked);
+
+    [Fact]
+    public void Generate_HashFile_PolicyAndHandler_ShareTheSamePathSelector_NoDecoyBypass()
+        // B1 regression: the policy and RunHashFile BOTH extract the path via the one shared
+        // GenerateCommands.HashFilePath, so the decoy "sha256 <outside> --algorithm sha256" resolves
+        // to the leading positional ("sha256") for BOTH — the handler can never hash a token the
+        // policy did not validate. (A fake-workspace Evaluate can't show this: identity Resolve makes
+        // "sha256" look outside /proj, the opposite of production — hence this selector-level guard.)
+        => Assert.Equal("sha256",
+            GenerateCommands.HashFilePath.Extract(["sha256", "/etc/passwd", "--algorithm", "sha256"]));
+
     // ============================================================ dispatch-level (blocked path)
 
     [Fact]
