@@ -201,6 +201,12 @@ sealed record RequirePathWithinProjectRule(PathArg Target) : Rule
 /// </summary>
 sealed record RequireWithinSafeDeleteDirRule(PathArg Target, IReadOnlyCollection<string> SafeDirs) : Rule
 {
+    // Case-insensitive membership: callers pass the canonical mixed-case directory names (e.g.
+    // "TestResults", used verbatim elsewhere to construct paths), so the match must fold case here
+    // rather than the data being lowercased. Lowercasing only the candidate (the old bug) left every
+    // non-lowercase entry permanently unmatchable.
+    private readonly HashSet<string> _safeDirs = SafeDirs.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
     public override PolicyResult Evaluate(string[] args, in SafetyContext ctx)
     {
         var dir = Target.Extract(args);
@@ -215,7 +221,7 @@ sealed record RequireWithinSafeDeleteDirRule(PathArg Target, IReadOnlyCollection
             // Split on BOTH separators: FakeWorkspace uses '/' even on Windows; the real
             // FileSystemWorkspace uses OS separators.
             foreach (var seg in rel.Split('/', '\\', StringSplitOptions.RemoveEmptyEntries))
-                if (SafeDirs.Contains(seg.ToLowerInvariant())) return new PolicyResult.Allow();
+                if (_safeDirs.Contains(seg)) return new PolicyResult.Allow();
         }
         return new PolicyResult.Block(
             $"'{dir}' is not inside a safe delete directory",

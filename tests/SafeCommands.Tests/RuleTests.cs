@@ -321,6 +321,18 @@ public class RuleTests
     }
 
     [Fact]
+    public void RequireWithinSafeDeleteDir_MixedCaseSafeDir_MatchesCaseInsensitively()
+    {
+        // N2 regression: a canonical mixed-case safe dir (like the real "TestResults") must match a
+        // differently-cased candidate. The old rule lowercased only the candidate, so "TestResults"
+        // was never reachable and a real TestResults/ dir failed safe (over-restrictive).
+        var policy = Policy.Default.RequireWithinSafeDeleteDir(new PathArg.FlagValue("--in"), ["TestResults"]);
+        var ws = new FakeWorkspace { ProjectRoot = "/proj" };
+        Assert.False(policy.Evaluate(["*.trx", "--in", "/proj/testresults"], Ctx(ws: ws)).IsBlocked);
+        Assert.False(policy.Evaluate(["*.trx", "--in", "/proj/TestResults"], Ctx(ws: ws)).IsBlocked);
+    }
+
+    [Fact]
     public void RequireWithinSafeDeleteDir_MissingInFlag_Allows()
         // FlagValue.Extract returns null → Allow (the handler usage-errors on the missing --in).
         => Assert.False(SafeDeletePolicy().Evaluate(["*.log"], Ctx(ws: new FakeWorkspace { ProjectRoot = "/proj" })).IsBlocked);
