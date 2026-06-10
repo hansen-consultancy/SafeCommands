@@ -186,6 +186,26 @@ public class DispatchTests
     }
 
     [Fact]
+    public void Execute_ProxyRun_MixedCaseTool_ResolvesAndEnforcesTargetPolicy()
+    {
+        // CommandRegistry.Find is OrdinalIgnoreCase, so "proxy run GH ..." resolves the gh command.
+        // The proof is the block REASON: "not allowed for this subcommand" can only arise from gh's
+        // own policy (api prefix matched, -X rejected). Had GH failed to resolve, the reason would be
+        // "not in the proxy allowlist" instead — so this distinguishes resolution from a generic block.
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("proxy", "run");
+        Assert.NotNull(cmd);
+        var (ports, exec, render) = Setup();
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "proxy", "run", ["GH", "api", "-X", "POST"]);
+
+        Assert.Equal(1, rc);
+        Assert.Empty(exec.Calls);
+        var block = Assert.Single(render.Blocks);
+        Assert.Contains("not allowed for this subcommand", block.Reason);
+    }
+
+    [Fact]
     public void Execute_ProxyGhBlocked_UnderJsonMode_EmitsBlockedJson()
     {
         // Closes the --json fork for proxy: a per-tool policy block renders the JSON envelope.
