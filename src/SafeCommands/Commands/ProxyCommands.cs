@@ -1,14 +1,24 @@
 using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
 /// <summary>
 /// Proxy commands for tools not in the main groups.
-/// Each entry defines exactly which subcommands/flags are allowed.
+/// Each entry defines exactly which subcommands/flags are allowed; those entries are compiled
+/// into a per-tool <see cref="Policy"/> (an <c>AllowSubcommands</c> chain) enforced centrally at
+/// dispatch, so the handlers themselves do no subcommand/flag matching.
 /// </summary>
 static class ProxyCommands
 {
+    // curl write-method flags: blocked up front so the message stays curl-specific rather than
+    // surfacing as a generic "flag not allowed under subcommand".
+    private static readonly string[] CurlWriteFlags =
+        ["-X", "--request", "-d", "--data", "--data-raw", "--data-binary", "-F", "--form", "--upload-file", "-T"];
+
     // Allowed proxy patterns: tool -> allowed subcommand prefixes
     private static readonly Dictionary<string, AllowedProxy[]> AllowedProxies = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -124,103 +134,92 @@ static class ProxyCommands
         commands.Add(new("proxy", "run", "Run a command through the safety proxy",
             "safe proxy <tool> <args...>", SafetyLevel.CheckedWrite, RunProxy));
 
-        // Register convenience aliases for common proxy patterns
+        // One command per allowlisted tool, each carrying the policy compiled from its entries.
+        // The tool varies per command, so the handler closes over the tool name.
         commands.Add(new("proxy", "curl", "HTTP GET request via curl",
-            "safe proxy curl <url> [-s] [-H <header>]", SafetyLevel.ReadOnly, (args, json) => RunProxyFor("curl", args, json)));
+            "safe proxy curl <url> [-s] [-H <header>]", SafetyLevel.ReadOnly, (p, a) => RunTool(p, "curl", a))
+            { Policy = PolicyFor("curl") });
         commands.Add(new("proxy", "gh", "GitHub CLI (read-only ops)",
-            "safe proxy gh <command>", SafetyLevel.ReadOnly, (args, json) => RunProxyFor("gh", args, json)));
+            "safe proxy gh <command>", SafetyLevel.ReadOnly, (p, a) => RunTool(p, "gh", a))
+            { Policy = PolicyFor("gh") });
         commands.Add(new("proxy", "az", "Azure CLI (read-only ops)",
-            "safe proxy az <command>", SafetyLevel.ReadOnly, (args, json) => RunProxyFor("az", args, json)));
+            "safe proxy az <command>", SafetyLevel.ReadOnly, (p, a) => RunTool(p, "az", a))
+            { Policy = PolicyFor("az") });
         commands.Add(new("proxy", "kubectl", "Kubernetes CLI (read-only ops)",
-            "safe proxy kubectl <command>", SafetyLevel.ReadOnly, (args, json) => RunProxyFor("kubectl", args, json)));
+            "safe proxy kubectl <command>", SafetyLevel.ReadOnly, (p, a) => RunTool(p, "kubectl", a))
+            { Policy = PolicyFor("kubectl") });
         commands.Add(new("proxy", "terraform", "Terraform (read/plan ops)",
-            "safe proxy terraform <command>", SafetyLevel.ReadOnly, (args, json) => RunProxyFor("terraform", args, json)));
+            "safe proxy terraform <command>", SafetyLevel.ReadOnly, (p, a) => RunTool(p, "terraform", a))
+            { Policy = PolicyFor("terraform") });
         commands.Add(new("proxy", "pip", "Python pip (install/list)",
-            "safe proxy pip <command>", SafetyLevel.SafeWrite, (args, json) => RunProxyFor("pip", args, json)));
+            "safe proxy pip <command>", SafetyLevel.SafeWrite, (p, a) => RunTool(p, "pip", a))
+            { Policy = PolicyFor("pip") });
         commands.Add(new("proxy", "cargo", "Rust cargo (build/test)",
-            "safe proxy cargo <command>", SafetyLevel.SafeWrite, (args, json) => RunProxyFor("cargo", args, json)));
+            "safe proxy cargo <command>", SafetyLevel.SafeWrite, (p, a) => RunTool(p, "cargo", a))
+            { Policy = PolicyFor("cargo") });
         commands.Add(new("proxy", "make", "Run make targets",
-            "safe proxy make [target]", SafetyLevel.SafeWrite, (args, json) => RunProxyFor("make", args, json)));
+            "safe proxy make [target]", SafetyLevel.SafeWrite, (p, a) => RunTool(p, "make", a))
+            { Policy = PolicyFor("make") });
     }
 
-    private static int RunProxy(string[] args, bool json)
+    /// <summary>
+    /// Compiles a tool's <see cref="AllowedProxies"/> entries into its declared policy: an
+    /// <c>AllowSubcommands</c> chain (prefix + per-subcommand flag allowlist). curl additionally
+    /// blocks write-method flags first so the rejection message stays curl-specific.
+    /// </summary>
+    private static Policy PolicyFor(string tool)
+    {
+        var subs = AllowedProxies[tool]
+            .Select(p => new Subcommand(p.SubcommandPrefix, p.AllowedFlags))
+            .ToList();
+
+        var policy = Policy.Default;
+        if (tool.Equals("curl", StringComparison.OrdinalIgnoreCase))
+            policy = policy.BlockFlags(CurlWriteFlags,
+                "Only GET/HEAD requests are allowed through proxy",
+                "Remove -X/-d/-F flags for read-only curl");
+        return policy.AllowSubcommands(subs);
+    }
+
+    /// <summary>
+    /// Thin re-dispatcher for the explicit <c>safe proxy run &lt;tool&gt; &lt;args...&gt;</c> form:
+    /// resolves the per-tool command and routes it back through <see cref="CommandDispatcher"/> so
+    /// that tool's policy is the single source of enforcement.
+    /// </summary>
+    private static int RunProxy(Ports p, string[] args)
     {
         if (args.Length == 0)
         {
-            OutputFormatter.WriteError("Usage: safe proxy <tool> <args...>");
-            Console.WriteLine($"\nSupported tools: {string.Join(", ", AllowedProxies.Keys.OrderBy(k => k))}");
+            p.Render.Error("Usage: safe proxy <tool> <args...>");
+            p.Render.Info($"Supported tools: {string.Join(", ", AllowedProxies.Keys.OrderBy(k => k))}");
             return 1;
         }
 
         var tool = args[0];
-        var toolArgs = args.Skip(1).ToArray();
-        return RunProxyFor(tool, toolArgs, json);
-    }
-
-    private static int RunProxyFor(string tool, string[] args, bool json)
-    {
-        if (!AllowedProxies.TryGetValue(tool, out var allowed))
+        var rest = args[1..];
+        var found = CommandRegistry.Find("proxy", tool);
+        if (found is null)
         {
-            OutputFormatter.WriteBlocked($"proxy {tool}",
+            p.Render.Blocked($"proxy {tool}",
                 $"Tool '{tool}' is not in the proxy allowlist",
                 $"Supported: {string.Join(", ", AllowedProxies.Keys.OrderBy(k => k))}");
             return 1;
         }
+        return CommandDispatcher.Execute(found, p, "proxy", tool, rest);
+    }
 
+    /// <summary>
+    /// Executes an allowlisted tool. Subcommand/flag validation has already run as the command's
+    /// policy; the only check left here is the usage/environment one: that the tool is installed.
+    /// </summary>
+    private static int RunTool(Ports p, string tool, string[] args)
+    {
         if (!ProcessRunner.CommandExists(tool))
         {
-            OutputFormatter.WriteError($"Tool '{tool}' is not installed or not in PATH");
+            p.Render.Error($"Tool '{tool}' is not installed or not in PATH");
             return 1;
         }
-
-        // For curl, block POST/PUT/DELETE methods
-        if (tool.Equals("curl", StringComparison.OrdinalIgnoreCase))
-        {
-            foreach (var arg in args)
-            {
-                if (arg is "-X" or "--request" or "-d" or "--data" or "--data-raw" or "--data-binary"
-                    or "-F" or "--form" or "--upload-file" or "-T")
-                {
-                    OutputFormatter.WriteBlocked($"curl {arg}",
-                        "Only GET/HEAD requests are allowed through proxy",
-                        "Remove -X/-d/-F flags for read-only curl");
-                    return 1;
-                }
-            }
-        }
-
-        // Validate subcommand against allowed patterns
-        var argsStr = string.Join(' ', args);
-        var matched = false;
-
-        foreach (var proxy in allowed)
-        {
-            if (string.IsNullOrEmpty(proxy.SubcommandPrefix) || argsStr.StartsWith(proxy.SubcommandPrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                matched = true;
-                break;
-            }
-        }
-
-        if (!matched)
-        {
-            var allowedSubs = allowed.Where(a => !string.IsNullOrEmpty(a.SubcommandPrefix))
-                .Select(a => a.SubcommandPrefix).ToArray();
-            OutputFormatter.WriteBlocked($"{tool} {argsStr}",
-                $"Subcommand not in allowed list for '{tool}'",
-                $"Allowed: {string.Join(", ", allowedSubs)}");
-            return 1;
-        }
-
-        var (code, output, error) = ProcessRunner.Run(tool, args);
-        if (json)
-            OutputFormatter.WriteJson(new { tool, exitCode = code, output, error });
-        else
-        {
-            OutputFormatter.WritePassthrough(output);
-            OutputFormatter.WritePassthroughError(error);
-        }
-        return code;
+        return Run.Tool(p, tool, args);
     }
 
     private record AllowedProxy(string SubcommandPrefix, string[] AllowedFlags);

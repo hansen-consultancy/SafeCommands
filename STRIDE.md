@@ -139,12 +139,12 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 |----|--------|-------------|------------|--------|-------|------------|
 | E1 | File write outside project directory | Agent calls `safe file write ~/.ssh/authorized_keys --content "attacker_key"` or `safe file write ~/.bashrc --content "malicious"` | 1 | 4 | 4 | **Fully mitigated.** Path containment for all `file` ops (and `generate hash-file`) is a declared `Policy` — `RequirePathWithinProjectRule` (plus `RequireWithinSafeDeleteDirRule` for `delete-pattern`) — evaluated once at the `CommandDispatcher` seam before the handler, not scattered inline. A blocked path renders the uniform Blocked envelope (now including the `--json` branch). Resolution and the project-root boundary are owned by the `IWorkspace` port and unit-tested at the boundary. |
 | E2 | Process kill beyond dev tools | Agent calls `safe process kill-name` with a name that matches a critical system process | 1 | 3 | 3 | **Fully mitigated.** Kill-name uses strict allowlist: `node`, `dotnet`, `python`, `java`, `webpack`, `vite`, `tsc`, `cargo`, etc. Only dev tooling processes can be killed. |
-| E3 | Proxy command allowlist bypass via prefix matching | Agent crafts subcommand that starts with allowed prefix but includes additional dangerous operations | 2 | 3 | 6 | **Partially mitigated.** String prefix matching on joined args could allow suffix attacks. Tokenized subcommand parsing would be more robust. |
+| E3 | Proxy command allowlist bypass via prefix matching | Agent crafts subcommand that starts with allowed prefix but includes additional dangerous operations | 1 | 3 | 3 | **Fully mitigated.** Proxy validation is a declared `Policy` (`AllowSubcommandsRule`) evaluated centrally at the `CommandDispatcher` seam: token-boundary subcommand matching (string-prefix matching is gone — `status` no longer accepts `status-quo`, `pr list` no longer accepts `pr listicle`) **and** the formerly-dead per-subcommand flag allowlist is now enforced (e.g. `safe proxy gh api -X POST` and `safe proxy terraform plan -auto-approve` are blocked). The `Program.cs` dispatch bypass that routed proxy around the policy seam was removed, so proxy blocks now also emit the uniform `--json` Blocked envelope. |
 | E4 | Privilege inheritance | SafeCommands runs as the invoking user. If run as root/admin, all commands inherit those privileges | 1 | 4 | 4 | **Accepted by design.** CLI tools inherit caller privileges. Documentation should warn against running as root. |
 
 **Countermeasures:**
 - E1: Resolved — sandboxing is the declared `RequirePathWithinProjectRule` / `RequireWithinSafeDeleteDirRule`, centrally evaluated at the dispatch seam
-- E3: Improve proxy validation from string prefix to tokenized argument matching
+- E3: Resolved — proxy validation is the declared `AllowSubcommandsRule` (token-boundary subcommand match + per-subcommand flag enforcement), centrally evaluated at the dispatch seam
 
 ## Risk Summary
 
@@ -179,7 +179,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 | **Docker Safety** | Volume deletion blocked, compose-down `-v` blocked |
 | **Package Manager Safety** | Supply chain warnings on install, script allowlist, `audit fix --force` blocked |
 | **Generate Safety** | All generate commands are read-only pure computation. `hash-file` sandboxed to project directory. No external process execution. |
-| **Proxy Validation** | Per-tool subcommand allowlist, curl restricted to GET/HEAD |
+| **Proxy Validation** | Per-tool subcommand allowlist (token-boundary match) + per-subcommand flag allowlist, enforced as a declared `Policy` at the dispatch seam; curl restricted to GET/HEAD |
 | **Secret Masking** | Environment variable secret pattern matching (blocklist) |
 | **CI/CD Security** | OIDC trusted publishing, no stored API keys, tag-triggered only |
 | **Output Modes** | `--json` for machine-readable output, human-readable with safety colors |
@@ -191,6 +191,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 | v1 | 2026-04-04 | STRIDE analysis (initial) | Initial threat model covering 146 commands across 11 groups |
 | v2 | 2026-04-04 | STRIDE update (generate group) | Added I5, I6 for generate commands. Updated to 160 commands across 12 groups. |
 | v3 | 2026-05-30 | STRIDE update (file/generate path policy) | E1 + I2 path containment migrated from inline `ValidatePath` to declared `RequirePathWithinProjectRule` / `RequireWithinSafeDeleteDirRule` evaluated at the `CommandDispatcher` seam; path blocks now emit the `--json` Blocked envelope. |
+| v4 | 2026-06-10 | STRIDE update (proxy policy) | E3 resolved: proxy validation migrated from string-prefix matching (which never read the per-subcommand flag allowlist) to the declared `AllowSubcommandsRule` — token-boundary subcommand match **and** per-subcommand flag enforcement — evaluated at the `CommandDispatcher` seam. The `Program.cs` proxy dispatch bypass was removed; proxy blocks now emit the `--json` Blocked envelope. |
 
 ## References
 

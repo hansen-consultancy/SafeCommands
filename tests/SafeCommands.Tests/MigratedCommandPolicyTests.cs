@@ -476,6 +476,104 @@ public class MigratedCommandPolicyTests
         => Assert.Equal("sha256",
             GenerateCommands.HashFilePath.Extract(["sha256", "/etc/passwd", "--algorithm", "sha256"]));
 
+    // ============================================================ proxy (declared per-tool policies, 3c)
+
+    // SPAWN HAZARD: an ALLOWED proxy input pushed through CommandDispatcher.Execute would reach
+    // RunTool -> ProcessRunner.CommandExists (a real PATH probe, flaky in CI) and Run.Tool.
+    // So every allow case here asserts on the policy DIRECTLY via P("proxy", tool).Evaluate.
+    // BLOCKED cases block in the policy before the handler, so they are deterministic.
+
+    // --- Defect #2 closed: the per-subcommand flag allowlist is now ENFORCED (was dead before) ---
+
+    [Theory]
+    [InlineData("-X")]
+    [InlineData("--method")]
+    [InlineData("--field")]
+    public void Proxy_GhApi_BlocksAnyFlag_Defect2(string flag)
+        // "gh api" declares an EMPTY allowed-flag list, so ANY flag must block.
+        => Assert.True(P("proxy", "gh").Evaluate(["api", flag, "POST"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_TerraformPlan_BlocksAutoApprove_Defect2()
+        // -auto-approve is not in plan's allowed flags — flag enforcement now rejects it.
+        => Assert.True(P("proxy", "terraform").Evaluate(["plan", "-auto-approve"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_GhPrList_BlocksWebFlag_Defect2()
+        // --web is allowed under "pr view" but NOT under "pr list": flags are per-subcommand.
+        => Assert.True(P("proxy", "gh").Evaluate(["pr", "list", "--web"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_FlagBlock_ReasonIsPerSubcommand()
+    {
+        var block = P("proxy", "gh").Evaluate(["api", "-X", "POST"], Ctx()).Block;
+        Assert.NotNull(block);
+        Assert.Contains("not allowed for this subcommand", block.Reason);
+    }
+
+    // --- Allowed inputs still pass (policy-direct, no spawn) ---
+
+    [Fact]
+    public void Proxy_GhPrList_AllowsState()
+        => Assert.False(P("proxy", "gh").Evaluate(["pr", "list", "--state", "open"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_GhPrView_AllowsJson()
+        => Assert.False(P("proxy", "gh").Evaluate(["pr", "view", "--json"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_TerraformPlan_AllowsVar()
+        => Assert.False(P("proxy", "terraform").Evaluate(["plan", "-var", "foo=bar"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_KubectlGet_AllowsNamespace()
+        => Assert.False(P("proxy", "kubectl").Evaluate(["get", "--namespace", "kube-system"], Ctx()).IsBlocked);
+
+    // --- curl method block (curl-specific message, prepended before the subcommand rule) ---
+
+    [Theory]
+    [InlineData("-X", "POST")]
+    [InlineData("-d", "data")]
+    public void Proxy_Curl_BlocksWriteMethod(string flag, string val)
+    {
+        var block = P("proxy", "curl").Evaluate([flag, val, "https://x"], Ctx()).Block;
+        Assert.NotNull(block);
+        Assert.Contains("GET/HEAD", block.Reason);
+    }
+
+    [Fact]
+    public void Proxy_Curl_BlocksDataRawWithEqualsValue()
+        // Flag.Base normalizes "--data-raw=x" to "--data-raw", which is a blocked write flag.
+        => Assert.True(P("proxy", "curl").Evaluate(["--data-raw=x", "https://y"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_Curl_AllowsSilentGet()
+        => Assert.False(P("proxy", "curl").Evaluate(["-s", "https://x"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_Curl_AllowsHeader()
+        => Assert.False(P("proxy", "curl").Evaluate(["https://x", "-H", "Accept: text"], Ctx()).IsBlocked);
+
+    // --- Subcommand gate still holds (prefix-level) ---
+
+    [Theory]
+    [InlineData("destroy")]
+    [InlineData("apply")]
+    public void Proxy_Terraform_BlocksDangerousSubcommands(string sub)
+        => Assert.True(P("proxy", "terraform").Evaluate([sub], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_Gh_BlocksRepoDelete()
+        => Assert.True(P("proxy", "gh").Evaluate(["repo", "delete"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_Gh_SubcommandBlock_ReasonNamesAllowed()
+    {
+        var block = P("proxy", "gh").Evaluate(["repo", "delete"], Ctx()).Block;
+        Assert.NotNull(block);
+        Assert.Equal("Subcommand is not allowed", block.Reason);
+    }
+
     // ============================================================ dispatch-level (blocked path)
 
     [Fact]

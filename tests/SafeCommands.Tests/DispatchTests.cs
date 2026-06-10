@@ -135,6 +135,78 @@ public class DispatchTests
         Assert.Equal("no force", doc.RootElement.GetProperty("reason").GetString());
     }
 
+    // ---- proxy run re-dispatcher (3c): deterministic — these block/usage-error before any spawn ----
+
+    [Fact]
+    public void Execute_ProxyRun_NoArgs_UsageError_NoSpawn()
+    {
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("proxy", "run");
+        Assert.NotNull(cmd);
+        var (ports, exec, render) = Setup();
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "proxy", "run", []);
+
+        Assert.Equal(1, rc);
+        Assert.Empty(exec.Calls);
+        Assert.NotEmpty(render.Errors);  // usage path
+    }
+
+    [Fact]
+    public void Execute_ProxyRun_UnknownTool_Blocked_NoSpawn()
+    {
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("proxy", "run");
+        Assert.NotNull(cmd);
+        var (ports, exec, render) = Setup();
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "proxy", "run", ["definitely-not-a-tool", "x"]);
+
+        Assert.Equal(1, rc);
+        Assert.Empty(exec.Calls);
+        var block = Assert.Single(render.Blocks);
+        Assert.Contains("not in the proxy allowlist", block.Reason);
+    }
+
+    [Fact]
+    public void Execute_ProxyRun_RedispatchEnforcesTargetPolicy_GhApiFlagBlocked_NoSpawn()
+    {
+        // The single-source-of-truth guarantee: "proxy run gh api -X POST" re-dispatches to gh's
+        // command, whose policy blocks the flag (gh api allows no flags) before any spawn.
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("proxy", "run");
+        Assert.NotNull(cmd);
+        var (ports, exec, render) = Setup();
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "proxy", "run", ["gh", "api", "-X", "POST"]);
+
+        Assert.Equal(1, rc);
+        Assert.Empty(exec.Calls);  // gh's policy blocked the flag; CommandExists/Run.Tool never reached
+        Assert.NotEmpty(render.Blocks);
+    }
+
+    [Fact]
+    public void Execute_ProxyGhBlocked_UnderJsonMode_EmitsBlockedJson()
+    {
+        // Closes the --json fork for proxy: a per-tool policy block renders the JSON envelope.
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("proxy", "gh");
+        Assert.NotNull(cmd);
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        var render = new ConsoleRenderer(jsonMode: true, stdout, stderr);
+        var exec = new FakeExecutor();
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "proxy", "gh", ["api", "-X", "POST"]);
+
+        Assert.Equal(1, rc);
+        Assert.Empty(exec.Calls);
+        var doc = JsonDocument.Parse(stdout.ToString());
+        Assert.True(doc.RootElement.GetProperty("blocked").GetBoolean());
+        Assert.Contains("proxy gh", doc.RootElement.GetProperty("command").GetString());
+    }
+
     [Fact]
     public void Execute_PathOutsideProject_UnderJsonMode_EmitsBlockedJson()
     {
