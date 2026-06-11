@@ -1,6 +1,7 @@
 using Spectre.Console;
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
 
 namespace SafeCommands.Commands;
 
@@ -29,54 +30,43 @@ static class FileCommands
         "thumbs.db", ".ds_store", "desktop.ini",
     ];
 
-    /// <summary>
-    /// Validates that a resolved path is within the current working directory tree.
-    /// Prevents path traversal attacks (e.g., reading ~/.ssh/authorized_keys).
-    /// </summary>
-    private static bool ValidatePath(string path, string operation)
-    {
-        var fullPath = Path.GetFullPath(path);
-        var projectRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
-
-        // Ensure projectRoot ends with a separator so "/proj" doesn't match "/projEvil"
-        if (!projectRoot.EndsWith(Path.DirectorySeparatorChar))
-            projectRoot += Path.DirectorySeparatorChar;
-
-        if (fullPath.Equals(projectRoot.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
-            || fullPath.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        OutputFormatter.WriteBlocked(operation,
-            $"Path '{fullPath}' is outside the project directory",
-            $"All file operations are sandboxed to: {projectRoot.TrimEnd(Path.DirectorySeparatorChar)}");
-        return false;
-    }
-
     public static void Register(List<CommandDefinition> commands)
     {
         commands.AddRange([
             // Read-only
-            new("file", "list", "List directory contents", "safe file list [<path>]", SafetyLevel.ReadOnly, RunList),
-            new("file", "read", "Read file content", "safe file read <path> [--lines <n>]", SafetyLevel.ReadOnly, RunRead),
-            new("file", "exists", "Check if file or directory exists", "safe file exists <path>", SafetyLevel.ReadOnly, RunExists),
-            new("file", "info", "Show file metadata", "safe file info <path>", SafetyLevel.ReadOnly, RunInfo),
-            new("file", "count", "Count lines/words/chars in a file", "safe file count <path> [--lines|--words|--chars]", SafetyLevel.ReadOnly, RunCount),
-            new("file", "find", "Find files by pattern", "safe file find <pattern> [--in <dir>]", SafetyLevel.ReadOnly, RunFind),
-            new("file", "tree", "Show directory tree", "safe file tree [<path>] [--depth <n>]", SafetyLevel.ReadOnly, RunTree),
+            new("file", "list", "List directory contents", "safe file list [<path>]", SafetyLevel.ReadOnly, RunList)
+                { Policy = Policy.Default.RequirePathWithinProject() },
+            new("file", "read", "Read file content", "safe file read <path> [--lines <n>]", SafetyLevel.ReadOnly, RunRead)
+                { Policy = Policy.Default.RequirePathWithinProject() },
+            new("file", "exists", "Check if file or directory exists", "safe file exists <path>", SafetyLevel.ReadOnly, RunExists)
+                { Policy = Policy.Default.RequirePathWithinProject() },
+            new("file", "info", "Show file metadata", "safe file info <path>", SafetyLevel.ReadOnly, RunInfo)
+                { Policy = Policy.Default.RequirePathWithinProject() },
+            new("file", "count", "Count lines/words/chars in a file", "safe file count <path> [--lines|--words|--chars]", SafetyLevel.ReadOnly, RunCount)
+                { Policy = Policy.Default.RequirePathWithinProject() },
+            new("file", "find", "Find files by pattern", "safe file find <pattern> [--in <dir>]", SafetyLevel.ReadOnly, RunFind)
+                { Policy = Policy.Default.RequirePathWithinProject(new PathArg.FlagValue("--in")) },
+            new("file", "tree", "Show directory tree", "safe file tree [<path>] [--depth <n>]", SafetyLevel.ReadOnly, RunTree)
+                { Policy = Policy.Default.RequirePathWithinProject() },
 
             // Safe writes
-            new("file", "mkdir", "Create directory", "safe file mkdir <path>", SafetyLevel.SafeWrite, RunMkdir),
-            new("file", "copy", "Copy file (no overwrite)", "safe file copy <src> <dest>", SafetyLevel.SafeWrite, RunCopy),
-            new("file", "write", "Write to new file (no overwrite)", "safe file write <path> --content <text>", SafetyLevel.SafeWrite, RunWrite),
+            new("file", "mkdir", "Create directory", "safe file mkdir <path>", SafetyLevel.SafeWrite, RunMkdir)
+                { Policy = Policy.Default.RequirePathWithinProject() },
+            new("file", "copy", "Copy file (no overwrite)", "safe file copy <src> <dest>", SafetyLevel.SafeWrite, RunCopy)
+                { Policy = Policy.Default.RequirePathWithinProject(0).RequirePathWithinProject(1) },
+            new("file", "write", "Write to new file (no overwrite)", "safe file write <path> --content <text>", SafetyLevel.SafeWrite, RunWrite)
+                { Policy = Policy.Default.RequirePathWithinProject() },
 
             // Targeted writes
-            new("file", "delete-tracked", "Delete a git-tracked file", "safe file delete-tracked <file>", SafetyLevel.CheckedWrite, RunDeleteTracked),
-            new("file", "delete-temp", "Delete temp/cache/build files", "safe file delete-temp [<path>]", SafetyLevel.CheckedWrite, RunDeleteTemp),
+            new("file", "delete-tracked", "Delete a git-tracked file", "safe file delete-tracked <file>", SafetyLevel.CheckedWrite, RunDeleteTracked)
+                { Policy = Policy.Default.RequirePathWithinProject() },
+            new("file", "delete-temp", "Delete temp/cache/build files", "safe file delete-temp [<path>]", SafetyLevel.CheckedWrite, RunDeleteTemp)
+                { Policy = Policy.Default.RequirePathWithinProject() },
             new("file", "delete-locks", "Delete lock files", "safe file delete-locks", SafetyLevel.CheckedWrite, RunDeleteLocks),
-            new("file", "delete-pattern", "Delete files matching pattern in safe dirs", "safe file delete-pattern <glob> --in <dir>", SafetyLevel.CheckedWrite, RunDeletePattern),
-            new("file", "move", "Move/rename git-tracked file", "safe file move <src> <dest>", SafetyLevel.CheckedWrite, RunMove),
+            new("file", "delete-pattern", "Delete files matching pattern in safe dirs", "safe file delete-pattern <glob> --in <dir>", SafetyLevel.CheckedWrite, RunDeletePattern)
+                { Policy = Policy.Default.RequirePathWithinProject(new PathArg.FlagValue("--in")).RequireWithinSafeDeleteDir(new PathArg.FlagValue("--in"), SafeDeleteDirs) },
+            new("file", "move", "Move/rename git-tracked file", "safe file move <src> <dest>", SafetyLevel.CheckedWrite, RunMove)
+                { Policy = Policy.Default.RequirePathWithinProject(0).RequirePathWithinProject(1) },
         ]);
     }
 
@@ -85,7 +75,6 @@ static class FileCommands
     private static int RunList(string[] args, bool json)
     {
         var path = args.Length > 0 ? args[0] : ".";
-        if (!ValidatePath(path, "file list")) return 1;
         if (!Directory.Exists(path))
         {
             OutputFormatter.WriteError($"Directory not found: {path}");
@@ -123,7 +112,6 @@ static class FileCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file read <path>"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file read")) return 1;
         if (!File.Exists(path))
         {
             OutputFormatter.WriteError($"File not found: {path}");
@@ -151,7 +139,6 @@ static class FileCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file exists <path>"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file exists")) return 1;
         var fileExists = File.Exists(path);
         var dirExists = Directory.Exists(path);
         var exists = fileExists || dirExists;
@@ -169,7 +156,6 @@ static class FileCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file info <path>"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file info")) return 1;
 
         if (File.Exists(path))
         {
@@ -211,7 +197,6 @@ static class FileCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file count <path> [--lines|--words|--chars]"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file count")) return 1;
         if (!File.Exists(path)) { OutputFormatter.WriteError($"File not found: {path}"); return 1; }
 
         var wantLines = args.Contains("--lines");
@@ -253,7 +238,6 @@ static class FileCommands
         if (inIdx >= 0 && inIdx + 1 < args.Length)
             dir = args[inIdx + 1];
 
-        if (!ValidatePath(dir, "file find")) return 1;
         if (!Directory.Exists(dir))
         {
             OutputFormatter.WriteError($"Directory not found: {dir}");
@@ -290,7 +274,6 @@ static class FileCommands
         if (depthIdx >= 0 && depthIdx + 1 < args.Length)
             int.TryParse(args[depthIdx + 1], out maxDepth);
 
-        if (!ValidatePath(path, "file tree")) return 1;
         if (!Directory.Exists(path))
         {
             OutputFormatter.WriteError($"Directory not found: {path}");
@@ -360,7 +343,6 @@ static class FileCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file mkdir <path>"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file mkdir")) return 1;
         Directory.CreateDirectory(path);
         if (json)
             OutputFormatter.WriteJson(new { created = Path.GetFullPath(path) });
@@ -375,8 +357,6 @@ static class FileCommands
         var src = args[0];
         var dest = args[1];
 
-        if (!ValidatePath(src, "file copy (source)")) return 1;
-        if (!ValidatePath(dest, "file copy (destination)")) return 1;
         if (!File.Exists(src)) { OutputFormatter.WriteError($"Source not found: {src}"); return 1; }
         if (File.Exists(dest))
         {
@@ -397,7 +377,6 @@ static class FileCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file write <path> --content <text>"); return 1; }
         var path = args[0];
-        if (!ValidatePath(path, "file write")) return 1;
 
         if (File.Exists(path))
         {
@@ -433,7 +412,6 @@ static class FileCommands
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file delete-tracked <file>"); return 1; }
         var file = args[0];
 
-        if (!ValidatePath(file, "file delete-tracked")) return 1;
         if (!File.Exists(file)) { OutputFormatter.WriteError($"File not found: {file}"); return 1; }
 
         // Check if file is git-tracked
@@ -468,7 +446,6 @@ static class FileCommands
     private static int RunDeleteTemp(string[] args, bool json)
     {
         var basePath = args.Length > 0 ? args[0] : ".";
-        if (!ValidatePath(basePath, "file delete-temp")) return 1;
         if (!Directory.Exists(basePath))
         {
             OutputFormatter.WriteError($"Directory not found: {basePath}");
@@ -584,37 +561,9 @@ static class FileCommands
         }
 
         var dir = args[inIdx + 1];
-        if (!ValidatePath(dir, "file delete-pattern")) return 1;
         if (!Directory.Exists(dir))
         {
             OutputFormatter.WriteError($"Directory not found: {dir}");
-            return 1;
-        }
-
-        // Validate target is inside a safe directory. We walk from the target up
-        // toward the project root: if any ancestor segment matches a safe dir, the
-        // target is within an ephemeral build/cache tree (e.g. tmp/.dotnet is fine
-        // because its parent `tmp` is a safe dir).
-        var projectRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
-        var current = new DirectoryInfo(Path.GetFullPath(dir));
-        var matched = false;
-        while (current != null
-            && !current.FullName.Equals(projectRoot, StringComparison.OrdinalIgnoreCase))
-        {
-            if (SafeDeleteDirs.Contains(current.Name.ToLowerInvariant()))
-            {
-                matched = true;
-                break;
-            }
-            current = current.Parent;
-        }
-
-        if (!matched)
-        {
-            var dirName = Path.GetFileName(dir.TrimEnd('/', '\\'));
-            OutputFormatter.WriteBlocked($"file delete-pattern {pattern} --in {dir}",
-                $"'{dir}' is not inside a safe delete directory",
-                $"Target (or an ancestor) must be one of: {string.Join(", ", SafeDeleteDirs.Take(10))}...");
             return 1;
         }
 
@@ -647,8 +596,6 @@ static class FileCommands
         var src = args[0];
         var dest = args[1];
 
-        if (!ValidatePath(src, "file move (source)")) return 1;
-        if (!ValidatePath(dest, "file move (destination)")) return 1;
         if (!File.Exists(src)) { OutputFormatter.WriteError($"Source not found: {src}"); return 1; }
 
         // Check if file is git-tracked

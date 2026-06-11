@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
 
 namespace SafeCommands.Commands;
 
@@ -21,6 +22,12 @@ static class GenerateCommands
         ["oid"]  = Guid.Parse("6ba7b812-9dad-11d1-80b4-00c04fd430c8"),
         ["x500"] = Guid.Parse("6ba7b814-9dad-11d1-80b4-00c04fd430c8"),
     };
+
+    // hash-file's path argument: the first positional, skipping --algorithm's value. Shared by BOTH
+    // the declared Policy and RunHashFile so the token the policy validates is EXACTLY the token the
+    // handler hashes. A divergence here is a containment bypass: the handler must never read a path
+    // the policy did not check (e.g. a decoy "sha256 <outside> --algorithm sha256").
+    internal static readonly PathArg HashFilePath = new PathArg.Positional(0, ["--algorithm"]);
 
     public static void Register(List<CommandDefinition> commands)
     {
@@ -75,7 +82,8 @@ static class GenerateCommands
 
             new("generate", "hash-file", "Hash a file's contents (SHA256 default)",
                 "safe generate hash-file <path> [--algorithm sha256|sha384|sha512|md5]",
-                SafetyLevel.ReadOnly, RunHashFile),
+                SafetyLevel.ReadOnly, RunHashFile)
+                { Policy = Policy.Default.RequirePathWithinProject(HashFilePath) },
 
             new("generate", "slug", "Convert a string to a URL-safe slug",
                 "safe generate slug <string>",
@@ -553,9 +561,10 @@ static class GenerateCommands
 
     private static int RunHashFile(string[] args, bool json)
     {
-        // Parse out --algorithm and its value to find the file path
         var algorithm = GetOption(args, "--algorithm")?.ToLowerInvariant() ?? "sha256";
-        var path = args.FirstOrDefault(a => !a.StartsWith("--") && !a.Equals(GetOption(args, "--algorithm"), StringComparison.OrdinalIgnoreCase));
+        // Use the SAME selector the policy validated (HashFilePath) so the token we hash is exactly
+        // the one the containment check approved — see HashFilePath for why divergence is a bypass.
+        var path = HashFilePath.Extract(args);
 
         if (path == null)
         {
@@ -563,21 +572,7 @@ static class GenerateCommands
             return 1;
         }
 
-        // Path validation: must be within project directory
         var fullPath = Path.GetFullPath(path);
-        var projectRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
-        if (!projectRoot.EndsWith(Path.DirectorySeparatorChar))
-            projectRoot += Path.DirectorySeparatorChar;
-
-        if (!fullPath.Equals(projectRoot.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
-            && !fullPath.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase))
-        {
-            OutputFormatter.WriteBlocked("generate hash-file",
-                $"Path '{fullPath}' is outside the project directory",
-                $"All file operations are sandboxed to: {projectRoot.TrimEnd(Path.DirectorySeparatorChar)}");
-            return 1;
-        }
-
         if (!File.Exists(fullPath))
         {
             OutputFormatter.WriteError($"File not found: {fullPath}");

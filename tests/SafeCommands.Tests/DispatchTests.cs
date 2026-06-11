@@ -134,4 +134,29 @@ public class DispatchTests
         Assert.Equal("grp cmd --force", doc.RootElement.GetProperty("command").GetString());
         Assert.Equal("no force", doc.RootElement.GetProperty("reason").GetString());
     }
+
+    [Fact]
+    public void Execute_PathOutsideProject_UnderJsonMode_EmitsBlockedJson()
+    {
+        // Path-containment block flows through the same central render path as flag blocks.
+        // A FakeWorkspace whose containment predicate is always-false makes every path "outside".
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("file", "read");
+        Assert.NotNull(cmd);
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        var render = new ConsoleRenderer(jsonMode: true, stdout, stderr);
+        var exec = new FakeExecutor();
+        var ws = new FakeWorkspace { ProjectRoot = "/proj", WithinPredicate = _ => false };
+        var ports = new Ports(exec, render, new FakeRepoProbe(), ws);
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "file", "read", ["/etc/passwd"]);
+
+        Assert.Equal(1, rc);
+        Assert.Empty(exec.Calls);  // handler never ran (the policy blocked before dispatch)
+        var doc = JsonDocument.Parse(stdout.ToString());
+        Assert.True(doc.RootElement.GetProperty("blocked").GetBoolean());
+        Assert.Contains("file read", doc.RootElement.GetProperty("command").GetString());
+        Assert.Contains("outside the project directory", doc.RootElement.GetProperty("reason").GetString());
+    }
 }
