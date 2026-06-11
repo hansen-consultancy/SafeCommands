@@ -1,10 +1,24 @@
 # RFC: A deep Safety Policy that owns "is this command safe?"
 
-> Status: design / not yet implemented. Captured 2026-05-30 from a deepening exploration
-> (`/improve-codebase-architecture`, Candidate 1 in `ARCHITECTURE_DEEPENING.md`). Promotable
-> to a GitHub issue when ready. This is the **chosen hybrid** of three explored interfaces:
+> Status: **implemented** — shipped to `main` 2026-06-11 via #6→#10. Captured 2026-05-30 from a
+> deepening exploration (`/improve-codebase-architecture`, Candidate 1 in
+> `ARCHITECTURE_DEEPENING.md`). This is the **chosen hybrid** of three explored interfaces:
 > declarative policy-as-data enforced centrally at dispatch + domain-shaped ports for full
-> in-memory testability + a lean fluent rule vocabulary.
+> in-memory testability + a lean fluent rule vocabulary. The design body below is preserved as
+> the as-designed record; the notes here capture where the shipped code diverged.
+>
+> **As-built notes:**
+> - All three latent defects (Problem section) are closed and have regression tests.
+> - **10 of 12 groups carry declared policies.** `dotnet` and `env` deliberately stay on the
+>   legacy handler shim: both are pure passthrough with no safety rules to enforce, so their
+>   `Policy` would be empty. (They still emit Spectre markup under `--json`, which is harmless
+>   since neither has a blocked path.) An earlier inline-migration attempt at these groups — the
+>   original "6 PRs of #2" plan, PRs #4/#5 — was **superseded by this stack and closed**.
+> - **Proxy** landed as one `CommandDefinition` per allowlisted tool (each carrying its own
+>   `AllowSubcommands` policy), plus a thin `proxy run` re-dispatcher; the `Program.cs` proxy
+>   bypass was removed. `CommandExists` stayed in the handler — it's environment/usage, not safety.
+> - Rule names shipped as `BlockFlags` / `BlockSubstrings` / `AllowOnlyFirstArg` (this doc's
+>   vocabulary), not the `Deny*` names of the superseded inline approach.
 
 ## Problem
 

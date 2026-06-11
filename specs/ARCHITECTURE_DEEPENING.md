@@ -5,6 +5,14 @@
 > sense of Ousterhout's *A Philosophy of Software Design*: a deep module has a small
 > interface hiding a large implementation, is more testable, and lets you test at the
 > boundary instead of inside. Nothing here is committed work yet.
+>
+> **Update 2026-06-11:** Candidate 1 (with Candidate 2 folded in) is **shipped to `main`** via
+> the deep Safety-Policy stack #6→#10 — declared `Policy` chains enforced centrally at dispatch,
+> `IRepoProbe`/`IWorkspace` ports, ~225 boundary tests. 10 of 12 groups now carry policies
+> (`dotnet`/`env` excepted — pure passthrough, no rules to enforce). The "Context" section below
+> describes the *pre-migration* state captured 2026-05-30 and is retained as the original
+> snapshot; the per-idiom file:line evidence no longer matches `main`. The separately-attempted
+> inline migration (PRs #4/#5, the old "6-PR plan") was superseded by this stack and closed.
 
 ## Context: the codebase is mid-migration
 
@@ -30,7 +38,7 @@ contain virtually all the real safety logic.**
 
 ---
 
-## Candidate 1 — The safety `Policy` is hollow; "is this command safe?" is scattered ⭐
+## Candidate 1 — The safety `Policy` is hollow; "is this command safe?" is scattered ⭐ ✅ shipped (#6→#10)
 
 **Cluster:** `Safety/Policy.cs` vs. inline validation in `GitCommands`, `DbCommands`,
 `DockerCommands`, `ProcessCommands`, `NpmCommands`, `PnpmCommands`, `ProxyCommands`.
@@ -87,7 +95,7 @@ which decouples this candidate from Candidate 3.
 
 ---
 
-## Candidate 2 — Path sandboxing (STRIDE E1) has no owning abstraction
+## Candidate 2 — Path sandboxing (STRIDE E1) has no owning abstraction ✅ shipped (#8, as `RequirePathWithinProject`)
 
 **Cluster:** `FileCommands.ValidatePath` (`:36-55`) + its 18 inline call sites + the
 `SafeDeleteDirs` ancestor-walk in `delete-pattern` (`:594-619`) + `delete-temp`'s third
