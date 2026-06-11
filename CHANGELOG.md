@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **(Behaviour change, scoped to `proxy` group)** Proxy validation is now enforced as a declared `Policy` at the dispatch seam (part of the [#2](https://github.com/hansen-consultancy/SafeCommands/issues/2) safety-policy migration). The per-subcommand flag allowlist — previously declared but never checked — is now enforced: e.g. `safe proxy gh api -X POST` and `safe proxy terraform plan -auto-approve` are blocked (the flag is not in that subcommand's allowlist). Subcommand matching is now token-boundary (a prefix like `status` no longer accepts `status-quo`). Blocked proxy commands now emit the structured `--json` Blocked envelope, like every other migrated group.
+- **`safe proxy <tool>` unknown-tool message.** With the proxy dispatch bypass removed, an unrecognized direct form (`safe proxy foo bar`) now surfaces the generic `Unknown command: proxy foo` (which lists the available proxy commands) rather than the `not in the proxy allowlist` envelope; the explicit `safe proxy run foo` form still emits that envelope. Both forms refuse to execute the tool — this is a message-only difference, not a change in what is allowed to run.
+- **`proxy` JSON output shape.** Proxy commands now emit the shared `{ exitCode, output, error }` result envelope used by every migrated group; the previous proxy-only `tool` field was dropped.
+
 ## [0.4.0] - 2026-04-30
 
 ### Added

@@ -53,13 +53,6 @@ switch (first)
 
     case "instructions" or "setup":
         return MetaCommands.RunInstructions(cliArgs.Skip(1).ToArray(), jsonOutput);
-
-    case "proxy" when cliArgs.Length > 1:
-        // Handle "safe proxy <tool> <args...>"
-        var proxyCmd = CommandRegistry.Find("proxy", "run");
-        if (proxyCmd != null)
-            return proxyCmd.Handler(ports, cliArgs.Skip(1).ToArray());
-        break;
 }
 
 // Handle group commands: safe <group> <command> [args...]
