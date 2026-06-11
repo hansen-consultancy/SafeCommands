@@ -7,15 +7,6 @@ namespace SafeCommands.Commands;
 
 static class BunCommands
 {
-    internal static readonly HashSet<string> AllowedScripts =
-    [
-        "build", "dev", "start", "test", "lint", "format",
-        "typecheck", "check", "compile", "watch", "serve", "preview",
-        "generate", "codegen", "migrate", "seed", "prisma",
-        "storybook", "e2e", "cypress", "playwright",
-        "clean", "prebuild", "postbuild",
-    ];
-
     public static void Register(List<CommandDefinition> commands)
     {
         commands.AddRange([
@@ -28,7 +19,7 @@ static class BunCommands
 
             // Safe writes
             new("bun", "run", "Run package script (allowed list)", "safe bun run <script>", SafetyLevel.SafeWrite, RunScript)
-                { Policy = Policy.Default.AllowOnlyFirstArg(AllowedScripts, "Script") },
+                { Policy = Policy.Default.AllowOnlyFirstArg(PackageScripts.Allowed, "Script") },
             new("bun", "test", "Run tests", "safe bun test", SafetyLevel.SafeWrite, RunTest),
             new("bun", "build", "Build/bundle project", "safe bun build <entrypoint>", SafetyLevel.SafeWrite, RunBuild),
         ]);

@@ -1,5 +1,6 @@
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
+using SafeCommands.Safety;
 
 namespace SafeCommands.Commands;
 
@@ -42,8 +43,10 @@ static class DbCommands
             new("db", "prisma-generate", "Generate Prisma client", "safe db prisma-generate", SafetyLevel.SafeWrite, RunPrismaGenerate),
             new("db", "prisma-format", "Format Prisma schema", "safe db prisma-format", SafetyLevel.SafeWrite, RunPrismaFormat),
             new("db", "prisma-validate", "Validate Prisma schema", "safe db prisma-validate", SafetyLevel.ReadOnly, RunPrismaValidate),
-            new("db", "prisma-migrate-dev", "Create new migration (dev only, no --force)", "safe db prisma-migrate-dev --name <name>", SafetyLevel.CheckedWrite, RunPrismaMigrateDev),
-            new("db", "prisma-migrate-deploy", "Apply pending migrations", "safe db prisma-migrate-deploy", SafetyLevel.CheckedWrite, RunPrismaMigrateDeploy),
+            new("db", "prisma-migrate-dev", "Create new migration (dev only, no --force)", "safe db prisma-migrate-dev --name <name>", SafetyLevel.CheckedWrite, RunPrismaMigrateDev)
+                { Policy = Policy.Default.BlockFlags(DestructiveFlags, "This flag can cause irreversible data loss (drops tables or data)", "Remove the destructive flag (e.g. --force, --accept-data-loss) for a safe operation") },
+            new("db", "prisma-migrate-deploy", "Apply pending migrations", "safe db prisma-migrate-deploy", SafetyLevel.CheckedWrite, RunPrismaMigrateDeploy)
+                { Policy = Policy.Default.BlockFlags(DestructiveFlags, "This flag can cause irreversible data loss (drops tables or data)", "Remove the destructive flag (e.g. --force, --accept-data-loss) for a safe operation") },
             new("db", "prisma-db-pull", "Pull schema from database", "safe db prisma-db-pull", SafetyLevel.SafeWrite, RunPrismaDbPull),
             new("db", "prisma-db-seed", "Run database seed", "safe db prisma-db-seed", SafetyLevel.SafeWrite, RunPrismaDbSeed),
 
@@ -53,38 +56,28 @@ static class DbCommands
 
             // Drizzle - Safe writes
             new("db", "drizzle-generate", "Generate Drizzle migration", "safe db drizzle-generate", SafetyLevel.SafeWrite, RunDrizzleGenerate),
-            new("db", "drizzle-migrate", "Apply Drizzle migrations", "safe db drizzle-migrate", SafetyLevel.CheckedWrite, RunDrizzleMigrate),
+            new("db", "drizzle-migrate", "Apply Drizzle migrations", "safe db drizzle-migrate", SafetyLevel.CheckedWrite, RunDrizzleMigrate)
+                { Policy = Policy.Default.BlockFlags(DestructiveFlags, "This flag can cause irreversible data loss (drops tables or data)", "Remove the destructive flag (e.g. --force, --accept-data-loss) for a safe operation") },
 
             // EF Core
             new("db", "ef-migrations-list", "List EF Core migrations", "safe db ef-migrations-list", SafetyLevel.ReadOnly, RunEfMigrationsList),
             new("db", "ef-migrations-add", "Add new EF Core migration", "safe db ef-migrations-add <name>", SafetyLevel.SafeWrite, RunEfMigrationsAdd),
-            new("db", "ef-database-update", "Apply EF Core migrations", "safe db ef-database-update", SafetyLevel.CheckedWrite, RunEfDatabaseUpdate),
+            new("db", "ef-database-update", "Apply EF Core migrations", "safe db ef-database-update", SafetyLevel.CheckedWrite, RunEfDatabaseUpdate)
+                { Policy = Policy.Default.BlockFlags(DestructiveFlags, "This flag can cause irreversible data loss (drops tables or data)", "Remove the destructive flag (e.g. --force, --accept-data-loss) for a safe operation") },
             new("db", "ef-migrations-script", "Generate SQL script from migrations", "safe db ef-migrations-script", SafetyLevel.ReadOnly, RunEfMigrationsScript),
 
             // Laravel / Artisan
             new("db", "artisan-migrate-status", "Show Laravel migration status", "safe db artisan-migrate-status", SafetyLevel.ReadOnly, RunArtisanMigrateStatus),
-            new("db", "artisan-migrate", "Run Laravel migrations (no fresh/reset/rollback)", "safe db artisan-migrate", SafetyLevel.CheckedWrite, RunArtisanMigrate),
+            new("db", "artisan-migrate", "Run Laravel migrations (no fresh/reset/rollback)", "safe db artisan-migrate", SafetyLevel.CheckedWrite, RunArtisanMigrate)
+                { Policy = Policy.Default.BlockSubstrings(["fresh", "reset", "rollback", "wipe"], "migrate:fresh, migrate:reset, migrate:rollback, and db:wipe drop tables", "safe db artisan-migrate (forward-only migrations)") },
 
             // Django
             new("db", "django-showmigrations", "Show Django migration status", "safe db django-showmigrations", SafetyLevel.ReadOnly, RunDjangoShowMigrations),
-            new("db", "django-migrate", "Apply Django migrations", "safe db django-migrate", SafetyLevel.CheckedWrite, RunDjangoMigrate),
+            // "zero" is a positional target token, not a flag, but BlockFlags matches any arg's normalized base (exact-token, case-insensitive) — the closest faithful reuse of the existing rule.
+            new("db", "django-migrate", "Apply Django migrations", "safe db django-migrate", SafetyLevel.CheckedWrite, RunDjangoMigrate)
+                { Policy = Policy.Default.BlockFlags(["zero"], "Migrating to 'zero' drops all tables for the app", "safe db django-migrate (forward-only)") },
             new("db", "django-makemigrations", "Create Django migrations", "safe db django-makemigrations", SafetyLevel.SafeWrite, RunDjangoMakeMigrations),
         ]);
-    }
-
-    private static int BlockIfDestructive(string tool, string[] args)
-    {
-        foreach (var arg in args)
-        {
-            if (DestructiveFlags.Contains(arg.ToLowerInvariant()))
-            {
-                OutputFormatter.WriteBlocked($"{tool} {string.Join(' ', args)}",
-                    $"Flag '{arg}' can cause irreversible data loss (drops tables/data)",
-                    $"Remove '{arg}' for a safe operation");
-                return 1;
-            }
-        }
-        return 0;
     }
 
     private static int RunNpx(string[] args, bool json)
@@ -110,9 +103,6 @@ static class DbCommands
 
     private static int RunPrismaMigrateDev(string[] args, bool json)
     {
-        var check = BlockIfDestructive("prisma migrate dev", args);
-        if (check != 0) return check;
-
         var nameIdx = Array.IndexOf(args, "--name");
         if (nameIdx < 0 || nameIdx + 1 >= args.Length)
         {
@@ -123,12 +113,7 @@ static class DbCommands
         return RunNpx(["prisma", "migrate", "dev", ..args], json);
     }
 
-    private static int RunPrismaMigrateDeploy(string[] args, bool json)
-    {
-        var check = BlockIfDestructive("prisma migrate deploy", args);
-        if (check != 0) return check;
-        return RunNpx(["prisma", "migrate", "deploy"], json);
-    }
+    private static int RunPrismaMigrateDeploy(string[] args, bool json) => RunNpx(["prisma", "migrate", "deploy"], json);
 
     private static int RunPrismaDbPull(string[] args, bool json) => RunNpx(["prisma", "db", "pull"], json);
     private static int RunPrismaDbSeed(string[] args, bool json) => RunNpx(["prisma", "db", "seed"], json);
@@ -142,8 +127,6 @@ static class DbCommands
 
     private static int RunDrizzleMigrate(string[] args, bool json)
     {
-        var check = BlockIfDestructive("drizzle-kit migrate", args);
-        if (check != 0) return check;
         // drizzle-kit push is blocked entirely (it's the command that wiped 60+ tables)
         // only allow drizzle-kit migrate which applies generated SQL files
         return RunNpx(["drizzle-kit", "migrate", ..args], json);
@@ -170,8 +153,6 @@ static class DbCommands
 
     private static int RunEfDatabaseUpdate(string[] args, bool json)
     {
-        var check = BlockIfDestructive("ef database update", args);
-        if (check != 0) return check;
         var (code, output, error) = ProcessRunner.Run("dotnet", ["ef", "database", "update", ..args]);
         if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
         else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
@@ -198,18 +179,6 @@ static class DbCommands
 
     private static int RunArtisanMigrate(string[] args, bool json)
     {
-        // Block destructive artisan variants
-        foreach (var arg in args)
-        {
-            if (arg.Contains("fresh") || arg.Contains("reset") || arg.Contains("rollback") || arg.Contains("wipe"))
-            {
-                OutputFormatter.WriteBlocked($"artisan migrate {arg}",
-                    "migrate:fresh, migrate:reset, migrate:rollback, and db:wipe drop tables",
-                    "safe db artisan-migrate (forward-only migrations)");
-                return 1;
-            }
-        }
-
         var (code, output, error) = ProcessRunner.Run("php", ["artisan", "migrate", ..args]);
         if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
         else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
@@ -228,15 +197,6 @@ static class DbCommands
 
     private static int RunDjangoMigrate(string[] args, bool json)
     {
-        // Block migrating to "zero" (drops all tables for an app)
-        if (args.Contains("zero"))
-        {
-            OutputFormatter.WriteBlocked("django migrate <app> zero",
-                "Migrating to 'zero' drops all tables for the app",
-                "safe db django-migrate (forward-only)");
-            return 1;
-        }
-
         var (code, output, error) = ProcessRunner.Run("python", ["manage.py", "migrate", ..args]);
         if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
         else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
