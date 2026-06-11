@@ -1,4 +1,5 @@
 using SafeCommands.Infrastructure.Ports;
+using SafeCommands.Safety;
 
 namespace SafeCommands.Registry;
 
@@ -50,6 +51,12 @@ record CommandDefinition(
         : this(group, name, description, usage, safety,
                (p, args) => legacyHandler(args, p.Render.JsonMode))
     { }
+
+    /// <summary>
+    /// Safety contract evaluated at the dispatch site before the handler runs. Defaults to
+    /// <see cref="Policy.Default"/> (no checks); commands set it via object-initializer syntax.
+    /// </summary>
+    public Policy Policy { get; init; } = Policy.Default;
 
     public string FullName => $"{Group} {Name}";
 

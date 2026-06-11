@@ -10,24 +10,12 @@ public class BunCommandsTests
     {
         var exec = new FakeExecutor();
         var render = new FakeRenderer { JsonMode = jsonMode };
-        return (new Ports(exec, render), exec, render);
+        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace()), exec, render);
     }
 
-    // ---- The previously-impossible assertion: blocked policy never spawns the tool ----
-
-    [Fact]
-    public void RunScript_UnknownScript_IsBlocked_WithoutSpawningBun()
-    {
-        var (ports, exec, render) = Setup();
-
-        var rc = BunCommands.RunScript(ports, ["nonsense-script"]);
-
-        Assert.Equal(1, rc);
-        Assert.Empty(exec.Calls);
-        var block = Assert.Single(render.Blocks);
-        Assert.Equal("bun run nonsense-script", block.Command);
-        Assert.Contains("not in the allowed list", block.Reason);
-    }
+    // NOTE: the "blocked policy never spawns bun" assertion lives in DispatchTests now.
+    // Policy moved off RunScript to the dispatch site, so calling RunScript directly with an
+    // unknown script would spawn bun — the guarantee is only meaningful through CommandDispatcher.
 
     [Theory]
     [InlineData("build")]
