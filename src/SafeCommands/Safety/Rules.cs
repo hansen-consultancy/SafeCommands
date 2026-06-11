@@ -215,7 +215,12 @@ sealed record RequireWithinSafeDeleteDirRule(PathArg Target, IReadOnlyCollection
             // Split on BOTH separators: FakeWorkspace uses '/' even on Windows; the real
             // FileSystemWorkspace uses OS separators.
             foreach (var seg in rel.Split('/', '\\', StringSplitOptions.RemoveEmptyEntries))
-                if (SafeDirs.Contains(seg.ToLowerInvariant())) return new PolicyResult.Allow();
+                // Case-insensitive: callers pass canonical mixed-case names (e.g. "TestResults", used
+                // verbatim elsewhere to build paths), so fold case at the check rather than lowercasing
+                // the data. Comparer-based Contains (not a cached field) keeps the rule safe to clone via
+                // `with`; SafeDirs is tiny so the linear scan is free. Lowercasing only the candidate
+                // (the old bug) left every non-lowercase entry permanently unmatchable.
+                if (SafeDirs.Contains(seg, StringComparer.OrdinalIgnoreCase)) return new PolicyResult.Allow();
         }
         return new PolicyResult.Block(
             $"'{dir}' is not inside a safe delete directory",
