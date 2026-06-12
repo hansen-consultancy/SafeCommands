@@ -5,12 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-06-12
+
+A foundational release. SafeCommands' core value — *validate before running* — now has a single owning abstraction. Safety validation moves from ~5 hand-rolled idioms scattered across handlers onto declarative `Policy` chains evaluated **once, centrally, before the handler runs**. This completes the deep Safety-Policy migration ([#2](https://github.com/hansen-consultancy/SafeCommands/issues/2); RFC in `specs/RFC-safety-policy.md`), closes all three latent validation defects, and brings the structured `--json` Blocked envelope to every migrated group.
+
+### Added
+- **Deep `Safety.Policy` abstraction.** A command's safety contract is an ordered `Rule` chain attached to its `CommandDefinition` as data. Ten fluent builders (`BlockFlags`, `BlockSubstrings`, `AllowOnlyFirstArg`, `AllowOnlyFlags`, `AllowSubcommands`, `RequirePathWithinProject`, `RequireGitRepo`, `RequireCleanTree`, `RequireHeadNotPushed`, `Custom`) over `Allow`/`Block`/`Rewrite` verdicts. `Flag.Base` normalizes `--flag=value` once before any flag rule runs.
+- **Central enforcement at dispatch.** `CommandDispatcher` evaluates the policy before invoking the handler; a blocked command renders a uniform envelope (including `--json`) and **structurally cannot spawn the tool** — handlers can no longer forget to validate.
+- **Two domain ports for full in-memory testability:** `IRepoProbe` (git state, cached to one spawn per question per run) and `IWorkspace` (path resolution + the project-root boundary), with `GitRepoProbe`/`FileSystemWorkspace` adapters and `FakeRepoProbe`/`FakeWorkspace` test doubles.
+- **Path sandboxing is now an owned, tested rule** (`RequirePathWithinProject`, STRIDE E1), replacing 14 inline `ValidatePath` call sites and a divergent copy in `generate hash-file`.
+- Test suite grew from 30 to **225** tests — the bulk exercising the safety rules at the boundary (force-push, `--accept-data-loss`, kill-name, compose `-v`, path traversal, `/proj` vs `/projEvil`, clean-tree) with zero processes or filesystem access.
+- Design records: `specs/RFC-safety-policy.md` and `specs/ARCHITECTURE_DEEPENING.md`.
 
 ### Changed
-- **(Behaviour change, scoped to `proxy` group)** Proxy validation is now enforced as a declared `Policy` at the dispatch seam (part of the [#2](https://github.com/hansen-consultancy/SafeCommands/issues/2) safety-policy migration). The per-subcommand flag allowlist — previously declared but never checked — is now enforced: e.g. `safe proxy gh api -X POST` and `safe proxy terraform plan -auto-approve` are blocked (the flag is not in that subcommand's allowlist). Subcommand matching is now token-boundary (a prefix like `status` no longer accepts `status-quo`). Blocked proxy commands now emit the structured `--json` Blocked envelope, like every other migrated group.
-- **`safe proxy <tool>` unknown-tool message.** With the proxy dispatch bypass removed, an unrecognized direct form (`safe proxy foo bar`) now surfaces the generic `Unknown command: proxy foo` (which lists the available proxy commands) rather than the `not in the proxy allowlist` envelope; the explicit `safe proxy run foo` form still emits that envelope. Both forms refuse to execute the tool — this is a message-only difference, not a change in what is allowed to run.
+- **(Behaviour change — structured `--json` Blocked envelope across all migrated groups.)** Blocked commands now emit `{ "blocked": true, "command", "reason", "suggestion" }` under `--json` for git, file, db, docker, npm, pnpm, process, generate, and proxy (joining bun from 0.4.0). Previously only bun was correct; the others emitted Spectre markup regardless of `--json` (defect #3). `dotnet` and `env` remain on the legacy path — pure passthrough, no blocked output to convert.
+- **(Behaviour change, scoped to `proxy` group)** The per-subcommand flag allowlist — previously declared but never checked (defect #2) — is now enforced: `safe proxy gh api -X POST` and `safe proxy terraform plan -auto-approve` are blocked. Subcommand matching is now token-boundary (a prefix like `status` no longer accepts `status-quo`).
+- **`safe proxy <tool>` unknown-tool message.** With the proxy dispatch bypass removed, the direct form `safe proxy foo bar` now surfaces the generic `Unknown command: proxy foo` (which lists the available proxy commands); the explicit `safe proxy run foo` form still emits the `not in the proxy allowlist` envelope. Both refuse to execute the tool — a message-only difference.
 - **`proxy` JSON output shape.** Proxy commands now emit the shared `{ exitCode, output, error }` result envelope used by every migrated group; the previous proxy-only `tool` field was dropped.
+
+### Fixed
+- **`--flag=value` validation bypass (defect #1).** Exact-token flag blocklists didn't normalize `--force=true`, `--accept-data-loss=…`, etc., so they slipped past on `git push`, db migrations, and `npm audit-fix`. `Flag.Base` normalization now catches them.
+- **`delete-pattern --in TestResults` failed closed (N2).** The safe-delete-dir check lowercased only the candidate segment, leaving the canonical mixed-case `TestResults` allowlist entry permanently unmatchable. Now matched case-insensitively. (Pre-existing since the unreleased 3a slice.)
+
+### Internal
+- Collapsed the 3×-duplicated run-script allowlist (npm/pnpm/bun) into a single `PackageScripts.Allowed`.
+- `CommandRegistry.Initialize()` is now idempotent and thread-safe (harmless under production's single startup call; the new parallel test collections raced on the shared registry).
+
+### Documentation
+- `STRIDE.md`: E1/I2 path-containment and E3 proxy-validation mitigations updated to the centrally-evaluated, boundary-tested rules, with new review-history rows.
 
 ## [0.4.0] - 2026-04-30
 
