@@ -37,10 +37,13 @@ static class ProxyCommands
             new("repo list", ["--json", "--limit", "--language"]),
             new("run list", ["--limit", "--json", "--workflow", "--branch"]),
             new("run view", ["--json", "--log"]),
-            // -f/-F send fields, -q/--jq filter output, -H headers, --paginate/--cache for reads.
-            // -X/--method deliberately omitted: gh api auto-selects POST when fields are present and
-            // GET otherwise, so reads and resource creation work while DELETE/PUT/PATCH stay blocked.
-            new("api", ["-f", "--raw-field", "-F", "--field", "-q", "--jq", "--paginate", "-H", "--header", "--cache"]),
+            // -f/-F send fields, -q/--jq filter output, --paginate/--cache for reads.
+            // -X/--method AND -H/--header deliberately omitted: gh api auto-selects POST when fields
+            // are present and GET otherwise, so reads and resource creation work while DELETE/PUT/PATCH
+            // stay blocked. -H is excluded so the method confinement can't be bypassed via a
+            // method-override header (e.g. X-HTTP-Method-Override) — the boundary stays structural
+            // rather than depending on the remote server declining such headers.
+            new("api", ["-f", "--raw-field", "-F", "--field", "-q", "--jq", "--paginate", "--cache"]),
             new("auth status", []),
         ],
 

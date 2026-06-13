@@ -488,9 +488,13 @@ public class MigratedCommandPolicyTests
     [Theory]
     [InlineData("-X")]
     [InlineData("--method")]
+    [InlineData("-H")]
+    [InlineData("--header")]
     public void Proxy_GhApi_BlocksWriteMethodOverride(string flag)
         // -X/--method are omitted from api's allowlist on purpose: gh api confines writes to
         // POST-via-fields (create), so a method override that could DELETE/PUT/PATCH must block.
+        // -H/--header is also blocked so the confinement can't be bypassed via a method-override
+        // header (e.g. X-HTTP-Method-Override: DELETE).
         => Assert.True(P("proxy", "gh").Evaluate(["api", flag, "DELETE", "repos/o/r/issues/1"], Ctx()).IsBlocked);
 
     [Fact]
