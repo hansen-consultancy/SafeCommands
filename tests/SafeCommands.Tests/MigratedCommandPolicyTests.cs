@@ -488,10 +488,21 @@ public class MigratedCommandPolicyTests
     [Theory]
     [InlineData("-X")]
     [InlineData("--method")]
-    [InlineData("--field")]
-    public void Proxy_GhApi_BlocksAnyFlag_Defect2(string flag)
-        // "gh api" declares an EMPTY allowed-flag list, so ANY flag must block.
-        => Assert.True(P("proxy", "gh").Evaluate(["api", flag, "POST"], Ctx()).IsBlocked);
+    [InlineData("-H")]
+    [InlineData("--header")]
+    public void Proxy_GhApi_BlocksWriteMethodOverride(string flag)
+        // -X/--method are omitted from api's allowlist on purpose: gh api confines writes to
+        // POST-via-fields (create), so a method override that could DELETE/PUT/PATCH must block.
+        // -H/--header is also blocked so the confinement can't be bypassed via a method-override
+        // header (e.g. X-HTTP-Method-Override: DELETE).
+        => Assert.True(P("proxy", "gh").Evaluate(["api", flag, "DELETE", "repos/o/r/issues/1"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_GhApi_AllowsReadAndCreateFlags()
+        // The blocked-by-da09144 case: field params + output filtering on a real issue-create call.
+        => Assert.False(P("proxy", "gh")
+            .Evaluate(["api", "repos/o/r/issues", "-f", "title=t", "-F", "body=b", "--jq", ".html_url"], Ctx())
+            .IsBlocked);
 
     [Fact]
     public void Proxy_TerraformPlan_BlocksAutoApprove_Defect2()
