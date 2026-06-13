@@ -37,7 +37,10 @@ static class ProxyCommands
             new("repo list", ["--json", "--limit", "--language"]),
             new("run list", ["--limit", "--json", "--workflow", "--branch"]),
             new("run view", ["--json", "--log"]),
-            new("api", []),
+            // -f/-F send fields, -q/--jq filter output, -H headers, --paginate/--cache for reads.
+            // -X/--method deliberately omitted: gh api auto-selects POST when fields are present and
+            // GET otherwise, so reads and resource creation work while DELETE/PUT/PATCH stay blocked.
+            new("api", ["-f", "--raw-field", "-F", "--field", "-q", "--jq", "--paginate", "-H", "--header", "--cache"]),
             new("auth status", []),
         ],
 

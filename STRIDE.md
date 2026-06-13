@@ -87,6 +87,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 | T2 | Flag smuggling past allowlist | Agent passes `--force` as part of a combined flag like `--force-with-lease` or via `--force=true` | 2 | 3 | 6 | Flag checks use `HashSet.Contains()` on individual args. `--force-with-lease` is intentionally allowed on push. Combined flag forms like `--force=true` are not matched (would need `=` splitting). |
 | T3 | Git hook bypass | Agent passes `--no-verify` or `-n` to skip pre-commit hooks | 1 | 3 | 3 | **Fully mitigated.** `GitCommands.RunCommit` explicitly blocks `--no-verify` and `-n` flags. |
 | T4 | Config file tampering | Attacker modifies `~/.safecommands/config.json` to add malicious commands | 2 | 3 | 6 | Extension config not yet implemented. When added, should use SHA-256 trust verification (like P:\Dev pattern). |
+| T5 | Destructive HTTP method via `gh api` proxy | Agent runs `safe proxy gh api -X DELETE repos/o/r` (or `PUT`/`PATCH`) to delete or overwrite GitHub resources through the gateway | 1 | 4 | 4 | **Fully mitigated.** `gh api`'s flag allowlist permits field (`-f`/`-F`), output (`-q`/`--jq`), header, and pagination flags but omits `-X`/`--method`. `gh api` auto-selects GET (no fields) or POST (with fields), so with the method override blocked, writes are confined to POST-via-fields (resource creation); DELETE/PUT/PATCH cannot be expressed. |
 
 **Countermeasures:**
 - `UseShellExecute = false` + `ArgumentList` eliminates command injection
@@ -179,7 +180,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 | **Docker Safety** | Volume deletion blocked, compose-down `-v` blocked |
 | **Package Manager Safety** | Supply chain warnings on install, script allowlist, `audit fix --force` blocked |
 | **Generate Safety** | All generate commands are read-only pure computation. `hash-file` sandboxed to project directory. No external process execution. |
-| **Proxy Validation** | Per-tool subcommand allowlist (token-boundary match) + per-subcommand flag allowlist, enforced as a declared `Policy` at the dispatch seam; curl restricted to GET/HEAD |
+| **Proxy Validation** | Per-tool subcommand allowlist (token-boundary match) + per-subcommand flag allowlist, enforced as a declared `Policy` at the dispatch seam; curl restricted to GET/HEAD; `gh api` confined to read + POST-via-fields create (`-X`/`--method` excluded, so no DELETE/PUT/PATCH) |
 | **Secret Masking** | Environment variable secret pattern matching (blocklist) |
 | **CI/CD Security** | OIDC trusted publishing, no stored API keys, tag-triggered only |
 | **Output Modes** | `--json` for machine-readable output, human-readable with safety colors |
@@ -192,6 +193,7 @@ SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway f
 | v2 | 2026-04-04 | STRIDE update (generate group) | Added I5, I6 for generate commands. Updated to 160 commands across 12 groups. |
 | v3 | 2026-05-30 | STRIDE update (file/generate path policy) | E1 + I2 path containment migrated from inline `ValidatePath` to declared `RequirePathWithinProjectRule` / `RequireWithinSafeDeleteDirRule` evaluated at the `CommandDispatcher` seam; path blocks now emit the `--json` Blocked envelope. |
 | v4 | 2026-06-10 | STRIDE update (proxy policy) | E3 resolved: proxy validation migrated from string-prefix matching (which never read the per-subcommand flag allowlist) to the declared `AllowSubcommandsRule` — token-boundary subcommand match **and** per-subcommand flag enforcement — evaluated at the `CommandDispatcher` seam. The `Program.cs` proxy dispatch bypass was removed; proxy blocks now emit the `--json` Blocked envelope. |
+| v5 | 2026-06-13 | STRIDE update (gh api flags) | Added T5. `gh api`'s previously empty flag allowlist (which blocked every flag, leaving only bare GET usable) now permits field/output/header/pagination flags for read and POST-via-fields create. `-X`/`--method` remain excluded, so DELETE/PUT/PATCH cannot be expressed through the gateway. |
 
 ## References
 
