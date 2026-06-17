@@ -75,8 +75,8 @@ sealed record Policy(IReadOnlyList<Rule> Rules)
     public Policy RequireGitRepo()
         => this with { Rules = [.. Rules, new RequireGitRepoRule()] };
 
-    public Policy RequireCleanTree()
-        => this with { Rules = [.. Rules, new RequireCleanTreeRule()] };
+    public Policy RequireCleanTree(IReadOnlyCollection<string>? exemptFlags = null)
+        => this with { Rules = [.. Rules, new RequireCleanTreeRule(exemptFlags ?? [])] };
 
     public Policy RequireHeadNotPushed()
         => this with { Rules = [.. Rules, new RequireHeadNotPushedRule()] };

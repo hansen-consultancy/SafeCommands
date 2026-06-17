@@ -42,7 +42,7 @@ dotnet tool install --global --add-source ./nupkg HC.SafeCommands
 
 - No Spectre.Console.Cli - manual dispatch for flexibility with 100+ commands
 - Supply chain aware: `npm install`, `bun install`, `dotnet tool-install` marked as `TargetedWrite` with warnings about postinstall scripts. `pnpm install` is `SafeWrite` since pnpm disables lifecycle scripts by default.
-- Git safety: checkout/merge/pull require clean working tree, push blocks --force, add blocks -A/.
+- Git safety: checkout/merge/pull require clean working tree (but `checkout -b` is exempt — creating a branch carries uncommitted changes onto it rather than discarding them), push blocks --force, add blocks -A/.
 - Proxy system validates full command against allowlist before forwarding
 
 ## Security Documentation

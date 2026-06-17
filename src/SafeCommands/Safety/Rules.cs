@@ -235,13 +235,26 @@ sealed record RequireGitRepoRule : Rule
         => ctx.Repo.IsGitRepo ? new PolicyResult.Allow() : new PolicyResult.Block("Not a git repository", null);
 }
 
-/// <summary>Requires a clean working tree.</summary>
-sealed record RequireCleanTreeRule : Rule
+/// <summary>
+/// Requires a clean working tree, EXCEPT when the arg vector carries one of <see cref="ExemptFlags"/>
+/// — a flag that makes the operation tree-preserving, so the guard would only obstruct it. The
+/// motivating case is <c>git checkout -b &lt;new&gt;</c>: creating a branch carries uncommitted
+/// changes onto it (git refuses rather than discards on conflict), unlike a plain branch <em>switch</em>
+/// which the clean-tree guard exists to protect. Flags match on <see cref="Flag.Base"/>, so the
+/// case-fold also admits <c>-B</c> (create-or-reset), which likewise preserves the working tree.
+/// </summary>
+sealed record RequireCleanTreeRule(IReadOnlyCollection<string> ExemptFlags) : Rule
 {
+    private readonly HashSet<string> _exempt = ExemptFlags.Select(f => f.ToLowerInvariant()).ToHashSet();
+
     public override PolicyResult Evaluate(string[] args, in SafetyContext ctx)
-        => ctx.Repo.IsCleanTree
+    {
+        if (_exempt.Count > 0 && args.Any(a => _exempt.Contains(Flag.Base(a))))
+            return new PolicyResult.Allow();
+        return ctx.Repo.IsCleanTree
             ? new PolicyResult.Allow()
             : new PolicyResult.Block("Working tree has uncommitted changes", "Commit or stash your changes first: safe git stash");
+    }
 }
 
 /// <summary>Blocks when HEAD has already been pushed (amending would require a force push).</summary>

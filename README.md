@@ -53,7 +53,7 @@ safe help git                 # Show all git commands with safety levels
 
 | Group | Commands | Description |
 |-------|----------|-------------|
-| **git** | 27 | Git with safety checks (no force push, no hard reset, clean tree required for checkout) |
+| **git** | 27 | Git with safety checks (no force push, no hard reset, clean tree required to switch branches — `checkout -b` exempt) |
 | **file** | 15 | File operations (read, count, delete only tracked files or temp/build dirs) |
 | **process** | 5 | Process management (kill limited to dev tooling only) |
 | **docker** | 18 | Docker & Compose (no volume removal, no system prune) |

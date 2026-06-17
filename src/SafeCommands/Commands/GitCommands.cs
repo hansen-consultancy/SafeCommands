@@ -69,8 +69,8 @@ static class GitCommands
                 { Policy = Policy.Default.RequireGitRepo().RequireCleanTree() },
             new("git", "push", "Push to remote (--force-with-lease ok, --force blocked)", "safe git push [<remote>] [<branch>] [--force-with-lease]", SafetyLevel.CheckedWrite, RunPush)
                 { Policy = Policy.Default.RequireGitRepo().BlockFlags(PushBlockedFlags, "Force push and delete are not allowed", "safe git push (without --force)") },
-            new("git", "checkout", "Switch branch (requires clean tree)", "safe git checkout <branch>", SafetyLevel.CheckedWrite, RunCheckout)
-                { Policy = Policy.Default.RequireGitRepo().BlockFlags(["."], "Discarding all changes is not allowed", "safe git checkout-file <specific-file> to restore individual files").RequireCleanTree() },
+            new("git", "checkout", "Switch branch (requires clean tree; -b creates a new branch and is exempt)", "safe git checkout [-b] <branch>", SafetyLevel.CheckedWrite, RunCheckout)
+                { Policy = Policy.Default.RequireGitRepo().BlockFlags(["."], "Discarding all changes is not allowed", "safe git checkout-file <specific-file> to restore individual files").RequireCleanTree(exemptFlags: ["-b"]) },
             new("git", "checkout-file", "Restore a specific file from HEAD", "safe git checkout-file <file>", SafetyLevel.CheckedWrite, RunCheckoutFile)
                 { Policy = Policy.Default.RequireGitRepo().BlockFlags([".", "*"], "Discarding all changes is not allowed", "Specify individual files: safe git checkout-file <file>") },
             new("git", "merge", "Merge branch (requires clean tree)", "safe git merge <branch>", SafetyLevel.CheckedWrite, RunMerge)
@@ -216,7 +216,7 @@ static class GitCommands
     {
         if (args.Length == 0)
         {
-            OutputFormatter.WriteError("Usage: safe git checkout <branch>");
+            OutputFormatter.WriteError("Usage: safe git checkout [-b] <branch>");
             return 1;
         }
         return RunGit(["checkout", ..args], json);

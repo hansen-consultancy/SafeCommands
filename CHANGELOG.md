@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **`safe git checkout -b <branch>` is now allowed with a dirty working tree.** The clean-tree guard exists to stop a plain branch *switch* from silently abandoning uncommitted work, but `checkout -b` *creates* a branch and carries those changes onto it (git refuses on conflict rather than discarding) — so the guard only obstructed the canonical "start a feature branch" move. `RequireCleanTree` gained an `exemptFlags` set; checkout exempts `-b` (case-folds to also cover `-B`). Plain `checkout <existing>` still requires a clean tree, and `checkout .` is still blocked.
+
 ## [0.5.0] - 2026-06-12
 
 A foundational release. SafeCommands' core value — *validate before running* — now has a single owning abstraction. Safety validation moves from ~5 hand-rolled idioms scattered across handlers onto declarative `Policy` chains evaluated **once, centrally, before the handler runs**. This completes the deep Safety-Policy migration ([#2](https://github.com/hansen-consultancy/SafeCommands/issues/2); RFC in `specs/RFC-safety-policy.md`), closes all three latent validation defects, and brings the structured `--json` Blocked envelope to every migrated group.

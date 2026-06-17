@@ -101,6 +101,17 @@ public class MigratedCommandPolicyTests
         => Assert.False(P("git", "checkout").Evaluate(["feature"], Ctx()).IsBlocked);
 
     [Theory]
+    [InlineData("-b")] // create + switch carries uncommitted changes onto the new branch
+    [InlineData("-B")] // create-or-reset; case-folds to -b and likewise preserves the working tree
+    public void Git_Checkout_DirtyTree_AllowsBranchCreate(string flag)
+        => Assert.False(P("git", "checkout")
+            .Evaluate([flag, "feature"], Ctx(repo: new FakeRepoProbe { IsCleanTree = false })).IsBlocked);
+
+    [Fact]
+    public void Git_Checkout_BranchCreate_StillBlocksDot()
+        => Assert.True(P("git", "checkout").Evaluate(["-b", "."], Ctx()).IsBlocked);
+
+    [Theory]
     [InlineData(".")]
     [InlineData("*")]
     public void Git_CheckoutFile_BlocksWildcards(string arg)
