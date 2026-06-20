@@ -173,6 +173,12 @@ public class GeneratorsTests
             Timestamps.Iso8601(new DateTimeOffset(2021, 1, 2, 3, 4, 5, 123, TimeSpan.Zero)));
 
     [Fact]
+    public void Timestamps_Iso8601_NormalizesNonZeroOffsetToUtc()
+        // 03:04:05+02:00 is 01:04:05Z — the "Z" must reflect UTC, not the local wall clock.
+        => Assert.Equal("2021-01-02T01:04:05.123Z",
+            Timestamps.Iso8601(new DateTimeOffset(2021, 1, 2, 3, 4, 5, 123, TimeSpan.FromHours(2))));
+
+    [Fact]
     public void Timestamps_UnixAndUnixMs()
     {
         var now = DateTimeOffset.FromUnixTimeMilliseconds(1_600_000_000_500L);
