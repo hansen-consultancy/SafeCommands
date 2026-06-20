@@ -2,6 +2,7 @@ using Spectre.Console;
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
 using SafeCommands.Safety;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
@@ -118,10 +119,7 @@ static class FileCommands
             return 1;
         }
 
-        var lines = -1;
-        var linesIdx = Array.IndexOf(args, "--lines");
-        if (linesIdx >= 0 && linesIdx + 1 < args.Length)
-            int.TryParse(args[linesIdx + 1], out lines);
+        var lines = Args.IntValue(args, "--lines", -1);
 
         var content = lines > 0
             ? string.Join('\n', File.ReadLines(path).Take(lines))
@@ -199,9 +197,9 @@ static class FileCommands
         var path = args[0];
         if (!File.Exists(path)) { OutputFormatter.WriteError($"File not found: {path}"); return 1; }
 
-        var wantLines = args.Contains("--lines");
-        var wantWords = args.Contains("--words");
-        var wantChars = args.Contains("--chars");
+        var wantLines = Args.HasFlag(args, "--lines");
+        var wantWords = Args.HasFlag(args, "--words");
+        var wantChars = Args.HasFlag(args, "--chars");
         if (!wantLines && !wantWords && !wantChars) wantLines = true;
 
         var content = File.ReadAllText(path);
@@ -233,10 +231,7 @@ static class FileCommands
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file find <pattern> [--in <dir>]"); return 1; }
 
         var pattern = args[0];
-        var dir = ".";
-        var inIdx = Array.IndexOf(args, "--in");
-        if (inIdx >= 0 && inIdx + 1 < args.Length)
-            dir = args[inIdx + 1];
+        var dir = Args.Value(args, "--in") ?? ".";
 
         if (!Directory.Exists(dir))
         {
@@ -269,10 +264,7 @@ static class FileCommands
     private static int RunTree(string[] args, bool json)
     {
         var path = args.Length > 0 && !args[0].StartsWith("--") ? args[0] : ".";
-        var maxDepth = 3;
-        var depthIdx = Array.IndexOf(args, "--depth");
-        if (depthIdx >= 0 && depthIdx + 1 < args.Length)
-            int.TryParse(args[depthIdx + 1], out maxDepth);
+        var maxDepth = Args.IntValue(args, "--depth", 3);
 
         if (!Directory.Exists(path))
         {
@@ -385,14 +377,14 @@ static class FileCommands
             return 1;
         }
 
-        var contentIdx = Array.IndexOf(args, "--content");
-        if (contentIdx < 0 || contentIdx + 1 >= args.Length)
+        var contentParts = Args.ValuesAfter(args, "--content");
+        if (contentParts.Length == 0)
         {
             OutputFormatter.WriteError("Usage: safe file write <path> --content <text>");
             return 1;
         }
 
-        var content = string.Join(' ', args[(contentIdx + 1)..]);
+        var content = string.Join(' ', contentParts);
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
@@ -553,14 +545,13 @@ static class FileCommands
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe file delete-pattern <glob> --in <dir>"); return 1; }
 
         var pattern = args[0];
-        var inIdx = Array.IndexOf(args, "--in");
-        if (inIdx < 0 || inIdx + 1 >= args.Length)
+        var dir = Args.Value(args, "--in");
+        if (dir == null)
         {
             OutputFormatter.WriteError("--in <dir> is required. Specify a safe target directory.");
             return 1;
         }
 
-        var dir = args[inIdx + 1];
         if (!Directory.Exists(dir))
         {
             OutputFormatter.WriteError($"Directory not found: {dir}");

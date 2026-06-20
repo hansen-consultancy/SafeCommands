@@ -251,4 +251,25 @@ public class DispatchTests
         Assert.Contains("file read", doc.RootElement.GetProperty("command").GetString());
         Assert.Contains("outside the project directory", doc.RootElement.GetProperty("reason").GetString());
     }
+
+    // ---- handler/policy case agreement: the --in flag the handler honors is the one the policy checks ----
+
+    [Fact]
+    public void Execute_DeletePattern_UppercaseInFlag_StillEnforcesSafeDir()
+    {
+        // Safety-mirror regression: handlers read --in via the case-insensitive Args helper, so the
+        // policy's PathArg.FlagValue("--in") must also match "--IN". If it stayed ordinal, this would
+        // sail past RequireWithinSafeDeleteDir and the handler would delete inside /proj/src.
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("file", "delete-pattern");
+        Assert.NotNull(cmd);
+        var (ports, exec, render) = Setup();  // FakeWorkspace ProjectRoot "/proj", default containment
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "file", "delete-pattern", ["*.log", "--IN", "/proj/src"]);
+
+        Assert.Equal(1, rc);
+        Assert.Empty(exec.Calls);
+        var block = Assert.Single(render.Blocks);
+        Assert.Contains("not inside a safe delete directory", block.Reason);
+    }
 }

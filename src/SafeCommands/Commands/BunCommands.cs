@@ -30,7 +30,7 @@ static class BunCommands
 
     internal static int RunInstall(Ports p, string[] args)
     {
-        if (!args.Contains("--ignore-scripts"))
+        if (!Args.HasFlag(args, "--ignore-scripts"))
             p.Render.Warning("bun install runs lifecycle scripts. Add --ignore-scripts for safer installs.");
         return Run.Bun(p, "install", args);
     }

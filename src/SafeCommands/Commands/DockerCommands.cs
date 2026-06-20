@@ -1,6 +1,7 @@
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
 using SafeCommands.Safety;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
@@ -70,7 +71,7 @@ static class DockerCommands
     {
         if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe docker logs <container>"); return 1; }
         // Remove -f/--follow if present (would block forever in captured mode)
-        var filtered = args.Where(a => a is not "-f" and not "--follow").ToArray();
+        var filtered = Args.Without(args, "-f", "--follow");
         return RunDocker(["logs", ..filtered], json);
     }
 
@@ -83,7 +84,7 @@ static class DockerCommands
     private static int RunComposePs(string[] args, bool json) => RunDockerCompose(["ps", ..args], json);
     private static int RunComposeLogs(string[] args, bool json)
     {
-        var filtered = args.Where(a => a is not "-f" and not "--follow").ToArray();
+        var filtered = Args.Without(args, "-f", "--follow");
         return RunDockerCompose(["logs", ..filtered], json);
     }
 

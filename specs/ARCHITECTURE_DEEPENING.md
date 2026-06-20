@@ -158,7 +158,20 @@ would make it table-testable.
 
 ---
 
-## Candidate 4 — `GenerateCommands` junk-drawer: pure transforms trapped in CLI plumbing
+## Candidate 4 — `GenerateCommands` junk-drawer: pure transforms trapped in CLI plumbing ✅ shipped
+
+> **Update 2026-06-20:** Shipped. The 14 transforms are extracted into pure, dependency-free
+> modules under `Commands/Generate/` (`Uuid`, `Hashing`, `Codec`, `Jwt`, `Slug`, `Timestamps`,
+> `RandomValues`) — clock and randomness are passed in as parameters, so all the deterministic logic
+> is table-tested (RFC 4122 UUID vectors, NIST hash digests, the jwt.io sample). The `generate`
+> handlers moved onto the `(Ports, string[])` signature and render through `IRenderer` (dropping the
+> group off the legacy shim, 11→10). The scattered `Array.IndexOf`/`args.Contains` parsing across
+> `generate`/`git`/`file`/`db`/`process`/`npm`/`env`/`docker`/`bun`/`meta` now has a single owner,
+> `Sugar/Args.cs` (`HasFlag`/`Value`/`IntValue`/`ValuesAfter`/`Positionals`/`Without`), matching flag
+> names case-insensitively. To keep that uniform case-handling safe, `Safety/PathArg.FlagValue` was
+> flipped to case-insensitive in lockstep so a handler's `--in` lookup can never diverge from the
+> policy's containment check (regression-tested). ~85 new tests. The hash-algorithm `switch` is no
+> longer duplicated. The original analysis below is retained as the pre-ship snapshot.
 
 **Cluster:** `GenerateCommands`' 14 self-contained transforms + its private
 `HasFlag/GetOption/GetIntOption` (`:639-658`) + git's `FilterFlags` + inline `Array.IndexOf`
