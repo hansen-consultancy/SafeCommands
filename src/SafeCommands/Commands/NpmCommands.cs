@@ -1,4 +1,4 @@
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
 using SafeCommands.Safety;
 using SafeCommands.Sugar;
@@ -30,26 +30,12 @@ static class NpmCommands
         ]);
     }
 
-    private static int RunNpm(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("npm", args);
-        if (json)
-            OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else
-        {
-            OutputFormatter.WritePassthrough(output);
-            OutputFormatter.WritePassthroughError(error);
-        }
-        return code;
-    }
+    // outdated/list/audit/view ask npm for --json under JsonMode; Run.Tool then wraps npm's
+    // output in the standard {exitCode,output,error} envelope (consistent across the whole CLI).
+    internal static int RunOutdated(Ports p, string[] args)
+        => Run.Tool(p, "npm", p.Render.JsonMode ? ["outdated", "--json"] : ["outdated"]);
 
-    private static int RunOutdated(string[] args, bool json)
-    {
-        if (json) return RunNpm(["outdated", "--json"], true);
-        return RunNpm(["outdated"], false);
-    }
-
-    private static int RunList(string[] args, bool json)
+    internal static int RunList(Ports p, string[] args)
     {
         var npmArgs = new List<string> { "list" };
         var depth = Args.Value(args, "--depth");
@@ -58,54 +44,48 @@ static class NpmCommands
             npmArgs.Add("--depth");
             npmArgs.Add(depth);
         }
-        if (json) npmArgs.Add("--json");
-        return RunNpm(npmArgs.ToArray(), false); // already json if requested
+        if (p.Render.JsonMode) npmArgs.Add("--json");
+        return Run.Tool(p, "npm", npmArgs.ToArray());
     }
 
-    private static int RunAudit(string[] args, bool json)
+    internal static int RunAudit(Ports p, string[] args)
+        => Run.Tool(p, "npm", p.Render.JsonMode ? ["audit", "--json"] : ["audit"]);
+
+    internal static int RunView(Ports p, string[] args)
     {
-        if (json) return RunNpm(["audit", "--json"], true);
-        return RunNpm(["audit"], false);
+        if (args.Length == 0) { p.Render.Error("Usage: safe npm view <package>"); return 1; }
+        return Run.Tool(p, "npm", p.Render.JsonMode ? ["view", args[0], "--json"] : ["view", args[0]]);
     }
 
-    private static int RunView(string[] args, bool json)
-    {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe npm view <package>"); return 1; }
-        if (json) return RunNpm(["view", args[0], "--json"], true);
-        return RunNpm(["view", args[0]], false);
-    }
-
-    private static int RunInstall(string[] args, bool json)
+    internal static int RunInstall(Ports p, string[] args)
     {
         // Warn about postinstall scripts - supply chain attack vector
         if (!Args.HasFlag(args, "--ignore-scripts"))
-            OutputFormatter.WriteWarning("npm install runs postinstall scripts. Add --ignore-scripts for safer installs.");
-        return RunNpm(["install", ..args], json);
+            p.Render.Warning("npm install runs postinstall scripts. Add --ignore-scripts for safer installs.");
+        return Run.Tool(p, "npm", ["install", ..args]);
     }
 
-    private static int RunCi(string[] args, bool json)
+    internal static int RunCi(Ports p, string[] args)
     {
         if (!Args.HasFlag(args, "--ignore-scripts"))
-            OutputFormatter.WriteWarning("npm ci runs postinstall scripts. Add --ignore-scripts for safer installs.");
-        return RunNpm(["ci", ..args], json);
+            p.Render.Warning("npm ci runs postinstall scripts. Add --ignore-scripts for safer installs.");
+        return Run.Tool(p, "npm", ["ci", ..args]);
     }
 
-    private static int RunScript(string[] args, bool json)
+    internal static int RunScript(Ports p, string[] args)
     {
         if (args.Length == 0)
         {
-            OutputFormatter.WriteError("Usage: safe npm run <script>");
-            OutputFormatter.WriteWarning($"Allowed scripts: {string.Join(", ", PackageScripts.Allowed)}");
+            p.Render.Error("Usage: safe npm run <script>");
+            p.Render.Warning($"Allowed scripts: {string.Join(", ", PackageScripts.Allowed)}");
             return 1;
         }
-
-        return RunNpm(["run", ..args], json);
+        return Run.Tool(p, "npm", ["run", ..args]);
     }
 
-    private static int RunAuditFix(string[] args, bool json) => RunNpm(["audit", "fix", ..args], json);
-
-    private static int RunTest(string[] args, bool json) => RunNpm(["test", ..args], json);
-    private static int RunBuild(string[] args, bool json) => RunNpm(["run", "build", ..args], json);
-    private static int RunCacheClean(string[] args, bool json) => RunNpm(["cache", "clean", "--force"], json);
-    private static int RunDedupe(string[] args, bool json) => RunNpm(["dedupe"], json);
+    internal static int RunAuditFix(Ports p, string[] args) => Run.Tool(p, "npm", ["audit", "fix", ..args]);
+    internal static int RunTest(Ports p, string[] args)     => Run.Tool(p, "npm", ["test", ..args]);
+    internal static int RunBuild(Ports p, string[] args)    => Run.Tool(p, "npm", ["run", "build", ..args]);
+    internal static int RunCacheClean(Ports p, string[] args) => Run.Tool(p, "npm", ["cache", "clean", "--force"]);
+    internal static int RunDedupe(Ports p, string[] args)   => Run.Tool(p, "npm", ["dedupe"]);
 }

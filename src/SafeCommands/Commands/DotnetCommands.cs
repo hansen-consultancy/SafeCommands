@@ -1,5 +1,6 @@
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
@@ -32,73 +33,52 @@ static class DotnetCommands
         ]);
     }
 
-    private static int RunDotnet(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("dotnet", args);
-        if (json)
-            OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else
-        {
-            OutputFormatter.WritePassthrough(output);
-            OutputFormatter.WritePassthroughError(error);
-        }
-        return code;
-    }
-
     // Read-only
-    private static int RunListPackage(string[] args, bool json)
-    {
-        var dotnetArgs = args.Length > 0 ? ["list", args[0], "package"] : (string[])["list", "package"];
-        return RunDotnet(dotnetArgs, json);
-    }
+    internal static int RunListPackage(Ports p, string[] args)
+        => Run.Tool(p, "dotnet", args.Length > 0 ? ["list", args[0], "package"] : (string[])["list", "package"]);
 
-    private static int RunListReference(string[] args, bool json)
-    {
-        var dotnetArgs = args.Length > 0 ? ["list", args[0], "reference"] : (string[])["list", "reference"];
-        return RunDotnet(dotnetArgs, json);
-    }
+    internal static int RunListReference(Ports p, string[] args)
+        => Run.Tool(p, "dotnet", args.Length > 0 ? ["list", args[0], "reference"] : (string[])["list", "reference"]);
 
-    private static int RunToolList(string[] args, bool json) => RunDotnet(["tool", "list", "-g"], json);
-    private static int RunInfo(string[] args, bool json) => RunDotnet(["--info"], json);
-    private static int RunSlnList(string[] args, bool json)
-    {
-        var dotnetArgs = args.Length > 0 ? ["sln", args[0], "list"] : (string[])["sln", "list"];
-        return RunDotnet(dotnetArgs, json);
-    }
+    internal static int RunToolList(Ports p, string[] args) => Run.Tool(p, "dotnet", ["tool", "list", "-g"]);
+    internal static int RunInfo(Ports p, string[] args)     => Run.Tool(p, "dotnet", ["--info"]);
+
+    internal static int RunSlnList(Ports p, string[] args)
+        => Run.Tool(p, "dotnet", args.Length > 0 ? ["sln", args[0], "list"] : (string[])["sln", "list"]);
 
     // Safe writes
-    private static int RunBuild(string[] args, bool json) => RunDotnet(["build", ..args], json);
-    private static int RunTest(string[] args, bool json) => RunDotnet(["test", ..args], json);
-    private static int RunRestore(string[] args, bool json) => RunDotnet(["restore", ..args], json);
-    private static int RunRun(string[] args, bool json) => RunDotnet(["run", ..args], json);
-    private static int RunClean(string[] args, bool json) => RunDotnet(["clean", ..args], json);
-    private static int RunPublish(string[] args, bool json) => RunDotnet(["publish", ..args], json);
-    private static int RunFormat(string[] args, bool json) => RunDotnet(["format", ..args], json);
-    private static int RunWatch(string[] args, bool json) => RunDotnet(["watch", ..args], json);
+    internal static int RunBuild(Ports p, string[] args)   => Run.Tool(p, "dotnet", ["build", ..args]);
+    internal static int RunTest(Ports p, string[] args)    => Run.Tool(p, "dotnet", ["test", ..args]);
+    internal static int RunRestore(Ports p, string[] args) => Run.Tool(p, "dotnet", ["restore", ..args]);
+    internal static int RunRun(Ports p, string[] args)     => Run.Tool(p, "dotnet", ["run", ..args]);
+    internal static int RunClean(Ports p, string[] args)   => Run.Tool(p, "dotnet", ["clean", ..args]);
+    internal static int RunPublish(Ports p, string[] args) => Run.Tool(p, "dotnet", ["publish", ..args]);
+    internal static int RunFormat(Ports p, string[] args)  => Run.Tool(p, "dotnet", ["format", ..args]);
+    internal static int RunWatch(Ports p, string[] args)   => Run.Tool(p, "dotnet", ["watch", ..args]);
 
-    private static int RunToolInstall(string[] args, bool json)
+    internal static int RunToolInstall(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe dotnet tool-install <tool>"); return 1; }
-        return RunDotnet(["tool", "install", "-g", ..args], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe dotnet tool-install <tool>"); return 1; }
+        return Run.Tool(p, "dotnet", ["tool", "install", "-g", ..args]);
     }
 
-    private static int RunAddPackage(string[] args, bool json)
+    internal static int RunAddPackage(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe dotnet add-package <package>"); return 1; }
-        return RunDotnet(["add", "package", ..args], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe dotnet add-package <package>"); return 1; }
+        return Run.Tool(p, "dotnet", ["add", "package", ..args]);
     }
 
-    private static int RunAddReference(string[] args, bool json)
+    internal static int RunAddReference(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe dotnet add-reference <project>"); return 1; }
-        return RunDotnet(["add", "reference", ..args], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe dotnet add-reference <project>"); return 1; }
+        return Run.Tool(p, "dotnet", ["add", "reference", ..args]);
     }
 
-    private static int RunNew(string[] args, bool json)
+    internal static int RunNew(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe dotnet new <template>"); return 1; }
-        return RunDotnet(["new", ..args], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe dotnet new <template>"); return 1; }
+        return Run.Tool(p, "dotnet", ["new", ..args]);
     }
 
-    private static int RunPack(string[] args, bool json) => RunDotnet(["pack", ..args], json);
+    internal static int RunPack(Ports p, string[] args) => Run.Tool(p, "dotnet", ["pack", ..args]);
 }
