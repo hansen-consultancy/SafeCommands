@@ -1,4 +1,5 @@
 using SafeCommands.Registry;
+using SafeCommands.Sugar;
 using Spectre.Console;
 
 namespace SafeCommands.Commands;
@@ -144,7 +145,7 @@ static class MetaCommands
     {
         var instructions = GetInstructionsContent();
 
-        if (args.Contains("--install"))
+        if (Args.HasFlag(args, "--install"))
         {
             return InstallInstructions(instructions);
         }

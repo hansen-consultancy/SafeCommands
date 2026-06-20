@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
 using SafeCommands.Safety;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
@@ -36,10 +37,7 @@ static class ProcessCommands
 
     private static int RunList(string[] args, bool json)
     {
-        var filter = "";
-        var filterIdx = Array.IndexOf(args, "--filter");
-        if (filterIdx >= 0 && filterIdx + 1 < args.Length)
-            filter = args[filterIdx + 1];
+        var filter = Args.Value(args, "--filter") ?? "";
 
         var processes = Process.GetProcesses()
             .Where(p =>

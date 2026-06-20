@@ -1,6 +1,7 @@
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
 using SafeCommands.Safety;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
@@ -186,9 +187,8 @@ static class GitCommands
 
     private static int RunCommit(string[] args, bool json)
     {
-        // Require -m flag with message
-        var msgIndex = Array.IndexOf(args, "-m");
-        if (msgIndex < 0 || msgIndex >= args.Length - 1)
+        // Require -m flag with a following message token
+        if (Args.Value(args, "-m") == null)
         {
             OutputFormatter.WriteError("Usage: safe git commit -m \"<message>\"");
             return 1;

@@ -281,6 +281,12 @@ public class RuleTests
     public void PathArg_FlagValue_FlagIsLastToken_ReturnsNull()
         => Assert.Null(new PathArg.FlagValue("--in").Extract(["--in"]));
 
+    [Fact]
+    public void PathArg_FlagValue_MatchesFlagCaseInsensitively()
+        // Mirrors the handlers' case-insensitive Args.Value lookup: an uppercase --IN the handler
+        // would honor must also be extracted here, or the path skips the containment check.
+        => Assert.Equal("d", new PathArg.FlagValue("--in").Extract(["--IN", "d"]));
+
     // ------------------------------------------------- RequireWithinSafeDeleteDir
 
     private static Policy SafeDeletePolicy()

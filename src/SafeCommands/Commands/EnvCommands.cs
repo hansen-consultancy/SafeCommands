@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
@@ -156,8 +157,8 @@ static class EnvCommands
 
     private static int RunVars(string[] args, bool json)
     {
-        var showAll = args.Contains("--all", StringComparer.OrdinalIgnoreCase);
-        var remaining = args.Where(a => !a.Equals("--all", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var showAll = Args.HasFlag(args, "--all");
+        var remaining = Args.Without(args, "--all");
         var filter = remaining.Length > 0 ? remaining[0] : null;
 
         var vars = Environment.GetEnvironmentVariables();

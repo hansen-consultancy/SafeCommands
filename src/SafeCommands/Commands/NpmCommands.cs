@@ -1,6 +1,7 @@
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
 using SafeCommands.Safety;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
@@ -51,11 +52,11 @@ static class NpmCommands
     private static int RunList(string[] args, bool json)
     {
         var npmArgs = new List<string> { "list" };
-        var depthIdx = Array.IndexOf(args, "--depth");
-        if (depthIdx >= 0 && depthIdx + 1 < args.Length)
+        var depth = Args.Value(args, "--depth");
+        if (depth != null)
         {
             npmArgs.Add("--depth");
-            npmArgs.Add(args[depthIdx + 1]);
+            npmArgs.Add(depth);
         }
         if (json) npmArgs.Add("--json");
         return RunNpm(npmArgs.ToArray(), false); // already json if requested
@@ -77,14 +78,14 @@ static class NpmCommands
     private static int RunInstall(string[] args, bool json)
     {
         // Warn about postinstall scripts - supply chain attack vector
-        if (!args.Contains("--ignore-scripts"))
+        if (!Args.HasFlag(args, "--ignore-scripts"))
             OutputFormatter.WriteWarning("npm install runs postinstall scripts. Add --ignore-scripts for safer installs.");
         return RunNpm(["install", ..args], json);
     }
 
     private static int RunCi(string[] args, bool json)
     {
-        if (!args.Contains("--ignore-scripts"))
+        if (!Args.HasFlag(args, "--ignore-scripts"))
             OutputFormatter.WriteWarning("npm ci runs postinstall scripts. Add --ignore-scripts for safer installs.");
         return RunNpm(["ci", ..args], json);
     }

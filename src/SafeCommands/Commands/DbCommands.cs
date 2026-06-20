@@ -1,6 +1,7 @@
 using SafeCommands.Infrastructure;
 using SafeCommands.Registry;
 using SafeCommands.Safety;
+using SafeCommands.Sugar;
 
 namespace SafeCommands.Commands;
 
@@ -103,8 +104,7 @@ static class DbCommands
 
     private static int RunPrismaMigrateDev(string[] args, bool json)
     {
-        var nameIdx = Array.IndexOf(args, "--name");
-        if (nameIdx < 0 || nameIdx + 1 >= args.Length)
+        if (Args.Value(args, "--name") == null)
         {
             OutputFormatter.WriteError("Usage: safe db prisma-migrate-dev --name <migration-name>");
             return 1;

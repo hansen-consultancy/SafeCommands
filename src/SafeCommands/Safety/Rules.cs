@@ -32,15 +32,20 @@ abstract record PathArg
     }
 
     /// <summary>
-    /// The token immediately following <see cref="Flag"/> (ordinal match, mirroring the handlers'
-    /// Array.IndexOf). Returns null if the flag is absent or is the last token.
+    /// The token immediately following <see cref="Flag"/> (case-insensitive match, mirroring the
+    /// handlers' <c>Sugar/Args.Value</c>). Returns null if the flag is absent or is the last token.
+    /// Case-insensitivity is load-bearing: handlers read the same flag via the case-insensitive
+    /// <c>Args</c> helper, so an ordinal match here would miss <c>--IN</c> that the handler honors,
+    /// letting that path skip the containment check.
     /// </summary>
     public sealed record FlagValue(string Flag) : PathArg
     {
         public override string? Extract(string[] args)
         {
-            var i = Array.IndexOf(args, Flag);
-            return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+            for (int i = 0; i < args.Length - 1; i++)
+                if (string.Equals(args[i], Flag, StringComparison.OrdinalIgnoreCase))
+                    return args[i + 1];
+            return null;
         }
     }
 }
