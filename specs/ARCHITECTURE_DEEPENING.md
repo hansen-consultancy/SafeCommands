@@ -129,6 +129,35 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 
 ## Candidate 3 — Finish the migration: collapse the two-world shim and two rendering paths
 
+> **Update 2026-06-20 (re-assessed against `main`; first slice shipped).** The 2026-05-30 snapshot
+> below was verified against current `main` — most of its counts were stale (the Safety-Policy stack
+> #6→#10 and Candidate 4 #14 had moved the landscape). Corrected status:
+>
+> | Sub-finding | Doc snapshot | Verified on `main` |
+> |---|---|---|
+> | Legacy `(string[],bool)` shim | 11/12 groups | **9/12** (`git, file, process, docker, npm, pnpm, dotnet, db, env`); native = `generate, bun, proxy`. `meta` is a separate direct-dispatch legacy path, outside the registry |
+> | `OutputFormatter.WriteBlocked` sites | ~28 across 13 files | **6, all in `FileCommands`**. `OutputFormatter.*` = 163 calls / 11 files. `ConsoleRenderer` still depends on `OutputFormatter.JsonOptions` (load-bearing) |
+> | `--json` blocked-envelope fork | latent bug | **still live**, but only the 6 `FileCommands` app-level blocks |
+> | `Run.cs` | `Tool`+`Bun`, `Bun` hardcodes `"bun"` | unchanged |
+> | Copy-pasted `RunXxx` envelope wrappers | ~17 | 6 central helpers + 9 inlined copies in `db` |
+> | Inline `"Usage:"` guards | ~51 | **54** across 12 files |
+> | `ProcessExecutor` seam | no-op; 11/12 bypass `Ports.Exec` | still a no-op seam; **9 of 11** tool-spawning groups bypass it (bun, proxy route through; generate spawns nothing) |
+> | `IRenderer.JsonMode` leak | leaks; handlers hand-build JSON | still leaks; C4 added `Render.Json(object)` but only `generate` uses it; ~49 `WriteJson` sites / 10 files |
+> | `Program.cs` → testable `Dispatch` | extract for tests | **partly done**: `CommandDispatcher.Execute` exists + is table-tested. Outer shell (routing, `--json` strip + proxy arg-splice, `--help`, global try/catch) is still untested top-level statements; no `Dispatch(Ports,string[])` |
+>
+> **First slice shipped (this PR):** the four pure-passthrough groups **`docker`, `dotnet`, `npm`, `pnpm`**
+> moved onto `(Ports,string[])` + `Sugar/Run.Tool`, deleting their per-group envelope helpers and routing
+> them through `IExecutor` — so a `FakeExecutor` now absorbs their spawns and "allowed input never spawns
+> a real tool" is finally assertable at the dispatch boundary (+43 tests). `npm list --json` was
+> normalized to the standard `{exitCode,output,error}` envelope (it was the lone raw-passthrough outlier;
+> `outdated`/`audit`/`view` already envelope-wrapped). Shim count drops **9 → 5**.
+>
+> **Remaining:** migrate the 5 harder groups (`git, file, process, db, env` — custom JSON shapes, `db`'s
+> 9 inlined envelope copies, `file`'s 6 `WriteBlocked` `--json` fork); then the shim ctor,
+> `IRenderer.JsonMode`, and most of `OutputFormatter` can be deleted. Two independent items remain:
+> consolidate the 54 inline `"Usage:"` guards into a declarative arg-spec at dispatch, and extract
+> `Program.cs`'s outer shell into a table-testable `Dispatch(Ports,string[])`.
+
 **Cluster:** `CommandDefinition`'s legacy shim (`:43-52`) + the **two live output stacks**
 (static `OutputFormatter`, ~28 `WriteBlocked` sites across 13 files, vs. `ConsoleRenderer`,
 1 file) + `Run.cs` (too shallow — only `Tool`+`Bun`, and `Bun` hardcodes `"bun"`) + the ~17
