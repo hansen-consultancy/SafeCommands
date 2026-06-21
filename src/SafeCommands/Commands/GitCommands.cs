@@ -1,4 +1,4 @@
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
 using SafeCommands.Safety;
 using SafeCommands.Sugar;
@@ -81,166 +81,155 @@ static class GitCommands
         ]);
     }
 
-    private static int RunGit(string[] gitArgs, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("git", gitArgs);
-        if (json)
-            OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else
-        {
-            OutputFormatter.WritePassthrough(output);
-            OutputFormatter.WritePassthroughError(error);
-        }
-        return code;
-    }
+    private static int RunGit(Ports p, string[] gitArgs) => Run.Tool(p, "git", gitArgs);
 
     // === Read-only commands ===
 
-    private static int RunStatus(string[] args, bool json)
+    internal static int RunStatus(Ports p, string[] args)
     {
-        if (json)
+        if (p.Render.JsonMode)
         {
-            var (code, output, _) = ProcessRunner.Run("git", ["status", "--porcelain", "-b"]);
-            var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            var r = p.Exec.Run("git", ["status", "--porcelain", "-b"]);
+            var lines = r.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries);
             var branch = lines.Length > 0 ? lines[0].TrimStart('#', ' ') : "unknown";
             var files = lines.Skip(1).Select(l => new { status = l[..2].Trim(), file = l[3..] }).ToArray();
-            OutputFormatter.WriteJson(new { branch, clean = files.Length == 0, files });
-            return code;
+            p.Render.Json(new { branch, clean = files.Length == 0, files });
+            return r.ExitCode;
         }
-        return RunGit(["status", ..args], false);
+        return RunGit(p, ["status", ..args]);
     }
 
-    private static int RunLog(string[] args, bool json) => RunGit(["log", ..args], json);
+    internal static int RunLog(Ports p, string[] args) => RunGit(p, ["log", ..args]);
 
-    private static int RunDiff(string[] args, bool json) => RunGit(["diff", ..args], json);
+    internal static int RunDiff(Ports p, string[] args) => RunGit(p, ["diff", ..args]);
 
-    private static int RunShow(string[] args, bool json)
+    internal static int RunShow(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git show <ref>"); return 1; }
-        return RunGit(["show", args[0]], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe git show <ref>"); return 1; }
+        return RunGit(p, ["show", args[0]]);
     }
 
-    private static int RunBranch(string[] args, bool json)
+    internal static int RunBranch(Ports p, string[] args)
     {
-        if (json)
+        if (p.Render.JsonMode)
         {
-            var (code, output, _) = ProcessRunner.Run("git", ["branch", "--list", "--no-color"]);
-            var branches = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            var r = p.Exec.Run("git", ["branch", "--list", "--no-color"]);
+            var branches = r.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(b => new { name = b.TrimStart('*', ' '), current = b.StartsWith('*') })
                 .ToArray();
-            OutputFormatter.WriteJson(new { branches });
-            return code;
+            p.Render.Json(new { branches });
+            return r.ExitCode;
         }
-        return RunGit(["branch", "--list", ..args], false);
+        return RunGit(p, ["branch", "--list", ..args]);
     }
 
-    private static int RunTag(string[] args, bool json) => RunGit(["tag", "--list", ..args], json);
+    internal static int RunTag(Ports p, string[] args) => RunGit(p, ["tag", "--list", ..args]);
 
-    private static int RunRemote(string[] args, bool json)
+    internal static int RunRemote(Ports p, string[] args)
     {
         if (args.Length > 0 && args[0] == "show")
-            return RunGit(["remote", ..args], json);
-        return RunGit(["remote", "-v"], json);
+            return RunGit(p, ["remote", ..args]);
+        return RunGit(p, ["remote", "-v"]);
     }
 
-    private static int RunBlame(string[] args, bool json)
+    internal static int RunBlame(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git blame <file>"); return 1; }
-        return RunGit(["blame", args[0]], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe git blame <file>"); return 1; }
+        return RunGit(p, ["blame", args[0]]);
     }
 
-    private static int RunRevParse(string[] args, bool json)
+    internal static int RunRevParse(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git rev-parse <ref>"); return 1; }
-        return RunGit(["rev-parse", ..args], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe git rev-parse <ref>"); return 1; }
+        return RunGit(p, ["rev-parse", ..args]);
     }
 
-    private static int RunLsFiles(string[] args, bool json) => RunGit(["ls-files", ..args], json);
+    internal static int RunLsFiles(Ports p, string[] args) => RunGit(p, ["ls-files", ..args]);
 
-    private static int RunShortlog(string[] args, bool json) => RunGit(["shortlog", ..args], json);
+    internal static int RunShortlog(Ports p, string[] args) => RunGit(p, ["shortlog", ..args]);
 
     // === Safe writes ===
 
-    private static int RunStash(string[] args, bool json) => RunGit(["stash", "push", ..args], json);
+    internal static int RunStash(Ports p, string[] args) => RunGit(p, ["stash", "push", ..args]);
 
-    private static int RunStashList(string[] args, bool json) => RunGit(["stash", "list"], json);
+    internal static int RunStashList(Ports p, string[] args) => RunGit(p, ["stash", "list"]);
 
-    private static int RunStashPop(string[] args, bool json) => RunGit(["stash", "pop"], json);
+    internal static int RunStashPop(Ports p, string[] args) => RunGit(p, ["stash", "pop"]);
 
-    private static int RunStashApply(string[] args, bool json)
+    internal static int RunStashApply(Ports p, string[] args)
     {
         var stashRef = args.Length > 0 ? args[0] : "stash@{0}";
-        return RunGit(["stash", "apply", stashRef], json);
+        return RunGit(p, ["stash", "apply", stashRef]);
     }
 
-    private static int RunAdd(string[] args, bool json)
+    internal static int RunAdd(Ports p, string[] args)
     {
         if (args.Length == 0)
         {
-            OutputFormatter.WriteError("Usage: safe git add <file...> (use 'safe git add-tracked' for all tracked files)");
+            p.Render.Error("Usage: safe git add <file...> (use 'safe git add-tracked' for all tracked files)");
             return 1;
         }
-        return RunGit(["add", ..args], json);
+        return RunGit(p, ["add", ..args]);
     }
 
-    private static int RunAddTracked(string[] args, bool json) => RunGit(["add", "-u"], json);
+    internal static int RunAddTracked(Ports p, string[] args) => RunGit(p, ["add", "-u"]);
 
-    private static int RunCommit(string[] args, bool json)
+    internal static int RunCommit(Ports p, string[] args)
     {
         // Require -m flag with a following message token
         if (Args.Value(args, "-m") == null)
         {
-            OutputFormatter.WriteError("Usage: safe git commit -m \"<message>\"");
+            p.Render.Error("Usage: safe git commit -m \"<message>\"");
             return 1;
         }
-        return RunGit(["commit", ..args], json);
+        return RunGit(p, ["commit", ..args]);
     }
 
-    private static int RunCommitAmend(string[] args, bool json) => RunGit(["commit", "--amend", ..args], json);
+    internal static int RunCommitAmend(Ports p, string[] args) => RunGit(p, ["commit", "--amend", ..args]);
 
-    private static int RunFetch(string[] args, bool json) => RunGit(["fetch", ..args], json);
+    internal static int RunFetch(Ports p, string[] args) => RunGit(p, ["fetch", ..args]);
 
-    private static int RunBranchCreate(string[] args, bool json)
+    internal static int RunBranchCreate(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git branch-create <name>"); return 1; }
-        return RunGit(["branch", args[0]], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe git branch-create <name>"); return 1; }
+        return RunGit(p, ["branch", args[0]]);
     }
 
     // === Checked writes ===
 
-    private static int RunPull(string[] args, bool json) => RunGit(["pull", ..args], json);
+    internal static int RunPull(Ports p, string[] args) => RunGit(p, ["pull", ..args]);
 
-    private static int RunPush(string[] args, bool json) => RunGit(["push", ..args], json);
+    internal static int RunPush(Ports p, string[] args) => RunGit(p, ["push", ..args]);
 
-    private static int RunCheckout(string[] args, bool json)
+    internal static int RunCheckout(Ports p, string[] args)
     {
         if (args.Length == 0)
         {
-            OutputFormatter.WriteError("Usage: safe git checkout [-b] <branch>");
+            p.Render.Error("Usage: safe git checkout [-b] <branch>");
             return 1;
         }
-        return RunGit(["checkout", ..args], json);
+        return RunGit(p, ["checkout", ..args]);
     }
 
-    private static int RunCheckoutFile(string[] args, bool json)
+    internal static int RunCheckoutFile(Ports p, string[] args)
     {
         if (args.Length == 0)
         {
-            OutputFormatter.WriteError("Usage: safe git checkout-file <file>");
+            p.Render.Error("Usage: safe git checkout-file <file>");
             return 1;
         }
-        return RunGit(["checkout", "--", args[0]], json);
+        return RunGit(p, ["checkout", "--", args[0]]);
     }
 
-    private static int RunMerge(string[] args, bool json)
+    internal static int RunMerge(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git merge <branch>"); return 1; }
-        return RunGit(["merge", args[0]], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe git merge <branch>"); return 1; }
+        return RunGit(p, ["merge", args[0]]);
     }
 
-    private static int RunCherryPick(string[] args, bool json)
+    internal static int RunCherryPick(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe git cherry-pick <hash>"); return 1; }
-        return RunGit(["cherry-pick", args[0]], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe git cherry-pick <hash>"); return 1; }
+        return RunGit(p, ["cherry-pick", args[0]]);
     }
 }
