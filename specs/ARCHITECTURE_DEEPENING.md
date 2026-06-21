@@ -152,18 +152,30 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 > normalized to the standard `{exitCode,output,error}` envelope (it was the lone raw-passthrough outlier;
 > `outdated`/`audit`/`view` already envelope-wrapped). Shim count drops **9 → 5**.
 >
-> **Slice 2 shipped (this PR):** **`db`** migrated — the `RunNpx` facade + 9 inlined envelope copies
+> **Slice 2 shipped (PR #16):** **`db`** migrated — the `RunNpx` facade + 9 inlined envelope copies
 > (EF/artisan/django) collapsed onto `Run.Tool` across all four fronting tools (`npx`/`dotnet`/`php`/`python`).
 > Its `BlockFlags`/`BlockSubstrings` migration-safety policies were untouched (enforced centrally at dispatch,
 > independent of handler signature), and the destructive-flag block + `--name`/`<name>` Usage guards are now
-> assertable at the dispatch boundary against a `FakeExecutor` (+15 tests). Shim count drops **5 → 4**.
+> assertable at the dispatch boundary against a `FakeExecutor` (+19 tests). Shim count drops **5 → 4**.
 > Pre-existing dead `PrismaBlockedCommands` set (declared, never read) left in place — out of scope.
 >
-> **Remaining:** migrate the 4 harder groups (`git, file, process, env` — custom JSON shapes,
-> `file`'s 6 `WriteBlocked` `--json` fork); then the shim ctor, `IRenderer.JsonMode`, and most of
-> `OutputFormatter` can be deleted. Two independent items remain: consolidate the 54 inline `"Usage:"`
-> guards into a declarative arg-spec at dispatch, and extract `Program.cs`'s outer shell into a
-> table-testable `Dispatch(Ports,string[])`.
+> **Slice 3 shipped (this PR):** **`env`** migrated — the first **dual-mode** group (every handler
+> hand-built a typed payload and branched on `bool json`). Now routes through `IRenderer` via the
+> sanctioned `if (JsonMode) Render.Json(payload) else Render.Info(...)` pattern — the first real use of
+> `Render.Json` outside `generate` — dropping all `OutputFormatter` + raw `Console.WriteLine`. `env check`
+> / `env which` spawns moved onto `IExecutor` (`where`/`which` probe + `--version`), so env is now fully
+> `FakeExecutor`/`FakeRenderer`-testable incl. the secret-masking path (+17 tests, incl. mask-under-`--all`
+> and exclude-without-`--all`). Shim count drops **4 → 3**. Two small documented behavior changes: the
+> `env vars --all` warning moved to `Render.Warning` (auto-suppressed under `--json`; `"WARNING:"` → `"Warning:"`
+> prefix), and `RunCheck` dropped `CommandExists`'s try/catch (a missing `where`/`which` binary — effectively
+> impossible on a dev host — now surfaces via the global handler rather than silently reporting not-found).
+>
+> **Remaining:** migrate the 3 hardest groups (`git, file, process` — `git`'s dual-mode `status`,
+> `file`'s 6 `WriteBlocked` `--json` fork + path sandboxing, `process`'s raw `System.Diagnostics.Process`
+> kill/enumerate which has **no `IExecutor` seam yet** — it needs a process-host port, not a mechanical
+> pass); then the shim ctor, `IRenderer.JsonMode`, and most of `OutputFormatter` can be deleted. Two
+> independent items remain: consolidate the 54 inline `"Usage:"` guards into a declarative arg-spec at
+> dispatch, and extract `Program.cs`'s outer shell into a table-testable `Dispatch(Ports,string[])`.
 
 **Cluster:** `CommandDefinition`'s legacy shim (`:43-52`) + the **two live output stacks**
 (static `OutputFormatter`, ~28 `WriteBlocked` sites across 13 files, vs. `ConsoleRenderer`,
