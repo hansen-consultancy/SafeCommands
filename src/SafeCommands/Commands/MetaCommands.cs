@@ -1,3 +1,4 @@
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
 using SafeCommands.Sugar;
 using Spectre.Console;
@@ -6,12 +7,12 @@ namespace SafeCommands.Commands;
 
 static class MetaCommands
 {
-    public static int RunHelp(string[] args, bool json)
+    public static int RunHelp(Ports p, string[] args)
     {
         if (args.Length > 0)
-            return RunGroupHelp(args[0], json);
+            return RunGroupHelp(p, args[0]);
 
-        if (json)
+        if (p.Render.JsonMode)
         {
             var groups = CommandRegistry.Groups.Select(g => new
             {
@@ -25,7 +26,7 @@ static class MetaCommands
                 }).ToArray()
             }).ToArray();
 
-            Infrastructure.OutputFormatter.WriteJson(new { version = GetVersion(), groups });
+            p.Render.Json(new { version = GetVersion(), groups });
             return 0;
         }
 
@@ -77,19 +78,19 @@ static class MetaCommands
         return 0;
     }
 
-    private static int RunGroupHelp(string group, bool json)
+    private static int RunGroupHelp(Ports p, string group)
     {
         var commands = CommandRegistry.FindByGroup(group).ToArray();
         if (commands.Length == 0)
         {
-            Infrastructure.OutputFormatter.WriteError($"Unknown group: {group}");
-            Console.WriteLine($"Available groups: {string.Join(", ", CommandRegistry.Groups.OrderBy(g => g))}");
+            p.Render.Error($"Unknown group: {group}");
+            p.Render.Info($"Available groups: {string.Join(", ", CommandRegistry.Groups.OrderBy(g => g))}");
             return 1;
         }
 
-        if (json)
+        if (p.Render.JsonMode)
         {
-            Infrastructure.OutputFormatter.WriteJson(new
+            p.Render.Json(new
             {
                 group,
                 commands = commands.Select(c => new { c.Name, c.Description, c.Usage, safety = c.SafetyLabel }).ToArray()
@@ -131,30 +132,30 @@ static class MetaCommands
         return 0;
     }
 
-    public static int RunVersion(string[] args, bool json)
+    public static int RunVersion(Ports p, string[] args)
     {
         var version = GetVersion();
-        if (json)
-            Infrastructure.OutputFormatter.WriteJson(new { version, tool = "SafeCommands", command = "safe" });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { version, tool = "SafeCommands", command = "safe" });
         else
-            Console.WriteLine($"SafeCommands v{version}");
+            p.Render.Info($"SafeCommands v{version}");
         return 0;
     }
 
-    public static int RunInstructions(string[] args, bool json)
+    public static int RunInstructions(Ports p, string[] args)
     {
         var instructions = GetInstructionsContent();
 
         if (Args.HasFlag(args, "--install"))
-        {
-            return InstallInstructions(instructions);
-        }
+            return InstallInstructions(p, instructions);
 
-        Console.WriteLine(instructions);
+        // The instructions are markdown for humans/CLAUDE.md, not a JSON shape — emit verbatim
+        // (Raw is not suppressed under --json, unlike Info).
+        p.Render.Raw(instructions + Environment.NewLine);
         return 0;
     }
 
-    private static int InstallInstructions(string instructions)
+    private static int InstallInstructions(Ports p, string instructions)
     {
         var claudeMdPath = Path.Combine(Directory.GetCurrentDirectory(), "CLAUDE.md");
         var marker = "<!-- SafeCommands -->";
@@ -164,7 +165,7 @@ static class MetaCommands
             var existing = File.ReadAllText(claudeMdPath);
             if (existing.Contains(marker))
             {
-                Console.WriteLine("SafeCommands instructions already present in CLAUDE.md");
+                p.Render.Info("SafeCommands instructions already present in CLAUDE.md");
                 return 0;
             }
 
@@ -175,7 +176,7 @@ static class MetaCommands
             File.WriteAllText(claudeMdPath, $"{marker}\n{instructions}\n");
         }
 
-        Infrastructure.OutputFormatter.WriteSuccess($"Instructions appended to {claudeMdPath}");
+        p.Render.Info($"Instructions appended to {claudeMdPath}");
         return 0;
     }
 

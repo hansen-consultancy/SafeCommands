@@ -1,17 +1,26 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using SafeCommands.Infrastructure.Ports;
 using Spectre.Console;
 
 namespace SafeCommands.Infrastructure.Adapters;
 
 /// <summary>
-/// Real <see cref="IRenderer"/> adapter. Reuses <see cref="OutputFormatter.JsonOptions"/> so the
-/// JSON envelope shape is identical to legacy callers. Markup paths route through
-/// per-instance <see cref="IAnsiConsole"/>s bound to the constructor-injected writers, so
-/// tests can capture human-mode output and Error markup goes to stderr (CLI convention).
+/// Real <see cref="IRenderer"/> adapter and the single owner of the <c>--json</c> envelope shape
+/// (<see cref="JsonOptions"/>). Markup paths route through per-instance <see cref="IAnsiConsole"/>s
+/// bound to the constructor-injected writers, so tests can capture human-mode output and Error markup
+/// goes to stderr (CLI convention).
 /// </summary>
 sealed class ConsoleRenderer : IRenderer
 {
+    /// <summary>Serialization options for every JSON envelope: indented, camelCase, null-omitting.</summary>
+    internal static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     private readonly TextWriter _stdout;
     private readonly TextWriter _stderr;
     private readonly IAnsiConsole _outAnsi;
@@ -34,7 +43,7 @@ sealed class ConsoleRenderer : IRenderer
         {
             _stdout.WriteLine(JsonSerializer.Serialize(
                 new { exitCode = r.ExitCode, output = r.StdOut, error = r.StdErr },
-                OutputFormatter.JsonOptions));
+                JsonOptions));
             return;
         }
         // ProcessRunner.Run TrimEnds captured stdout/stderr (Infrastructure/ProcessRunner.cs:45),
@@ -46,7 +55,7 @@ sealed class ConsoleRenderer : IRenderer
     public void Json(object payload)
     {
         if (!JsonMode) return;
-        _stdout.WriteLine(JsonSerializer.Serialize(payload, OutputFormatter.JsonOptions));
+        _stdout.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
     }
 
     public void Blocked(string command, string reason, string? suggestion)
@@ -55,7 +64,7 @@ sealed class ConsoleRenderer : IRenderer
         {
             _stdout.WriteLine(JsonSerializer.Serialize(
                 new { blocked = true, command, reason, suggestion },
-                OutputFormatter.JsonOptions));
+                JsonOptions));
             return;
         }
         // Markup wording mirrors 0.3.x OutputFormatter.WriteBlocked exactly.
