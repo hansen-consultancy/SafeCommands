@@ -145,18 +145,25 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 > | `IRenderer.JsonMode` leak | leaks; handlers hand-build JSON | still leaks; C4 added `Render.Json(object)` but only `generate` uses it; ~49 `WriteJson` sites / 10 files |
 > | `Program.cs` → testable `Dispatch` | extract for tests | **partly done**: `CommandDispatcher.Execute` exists + is table-tested. Outer shell (routing, `--json` strip + proxy arg-splice, `--help`, global try/catch) is still untested top-level statements; no `Dispatch(Ports,string[])` |
 >
-> **First slice shipped (this PR):** the four pure-passthrough groups **`docker`, `dotnet`, `npm`, `pnpm`**
+> **Slice 1 shipped (PR #15):** the four pure-passthrough groups **`docker`, `dotnet`, `npm`, `pnpm`**
 > moved onto `(Ports,string[])` + `Sugar/Run.Tool`, deleting their per-group envelope helpers and routing
 > them through `IExecutor` — so a `FakeExecutor` now absorbs their spawns and "allowed input never spawns
 > a real tool" is finally assertable at the dispatch boundary (+43 tests). `npm list --json` was
 > normalized to the standard `{exitCode,output,error}` envelope (it was the lone raw-passthrough outlier;
 > `outdated`/`audit`/`view` already envelope-wrapped). Shim count drops **9 → 5**.
 >
-> **Remaining:** migrate the 5 harder groups (`git, file, process, db, env` — custom JSON shapes, `db`'s
-> 9 inlined envelope copies, `file`'s 6 `WriteBlocked` `--json` fork); then the shim ctor,
-> `IRenderer.JsonMode`, and most of `OutputFormatter` can be deleted. Two independent items remain:
-> consolidate the 54 inline `"Usage:"` guards into a declarative arg-spec at dispatch, and extract
-> `Program.cs`'s outer shell into a table-testable `Dispatch(Ports,string[])`.
+> **Slice 2 shipped (this PR):** **`db`** migrated — the `RunNpx` facade + 9 inlined envelope copies
+> (EF/artisan/django) collapsed onto `Run.Tool` across all four fronting tools (`npx`/`dotnet`/`php`/`python`).
+> Its `BlockFlags`/`BlockSubstrings` migration-safety policies were untouched (enforced centrally at dispatch,
+> independent of handler signature), and the destructive-flag block + `--name`/`<name>` Usage guards are now
+> assertable at the dispatch boundary against a `FakeExecutor` (+15 tests). Shim count drops **5 → 4**.
+> Pre-existing dead `PrismaBlockedCommands` set (declared, never read) left in place — out of scope.
+>
+> **Remaining:** migrate the 4 harder groups (`git, file, process, env` — custom JSON shapes,
+> `file`'s 6 `WriteBlocked` `--json` fork); then the shim ctor, `IRenderer.JsonMode`, and most of
+> `OutputFormatter` can be deleted. Two independent items remain: consolidate the 54 inline `"Usage:"`
+> guards into a declarative arg-spec at dispatch, and extract `Program.cs`'s outer shell into a
+> table-testable `Dispatch(Ports,string[])`.
 
 **Cluster:** `CommandDefinition`'s legacy shim (`:43-52`) + the **two live output stacks**
 (static `OutputFormatter`, ~28 `WriteBlocked` sites across 13 files, vs. `ConsoleRenderer`,

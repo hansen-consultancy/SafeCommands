@@ -1,4 +1,4 @@
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
 using SafeCommands.Safety;
 using SafeCommands.Sugar;
@@ -81,133 +81,67 @@ static class DbCommands
         ]);
     }
 
-    private static int RunNpx(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("npx", args);
-        if (json)
-            OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else
-        {
-            OutputFormatter.WritePassthrough(output);
-            OutputFormatter.WritePassthroughError(error);
-        }
-        return code;
-    }
+    // npx-fronted migration tools (Prisma, Drizzle) share one facade; safety is enforced
+    // centrally at dispatch, so each handler is a thin tool invocation.
+    private static int RunNpx(Ports p, string[] args) => Run.Tool(p, "npx", args);
 
     // === Prisma ===
 
-    private static int RunPrismaStatus(string[] args, bool json) => RunNpx(["prisma", "migrate", "status"], json);
-    private static int RunPrismaStudio(string[] args, bool json) => RunNpx(["prisma", "studio"], json);
-    private static int RunPrismaGenerate(string[] args, bool json) => RunNpx(["prisma", "generate"], json);
-    private static int RunPrismaFormat(string[] args, bool json) => RunNpx(["prisma", "format"], json);
-    private static int RunPrismaValidate(string[] args, bool json) => RunNpx(["prisma", "validate"], json);
+    internal static int RunPrismaStatus(Ports p, string[] args) => RunNpx(p, ["prisma", "migrate", "status"]);
+    internal static int RunPrismaStudio(Ports p, string[] args) => RunNpx(p, ["prisma", "studio"]);
+    internal static int RunPrismaGenerate(Ports p, string[] args) => RunNpx(p, ["prisma", "generate"]);
+    internal static int RunPrismaFormat(Ports p, string[] args) => RunNpx(p, ["prisma", "format"]);
+    internal static int RunPrismaValidate(Ports p, string[] args) => RunNpx(p, ["prisma", "validate"]);
 
-    private static int RunPrismaMigrateDev(string[] args, bool json)
+    internal static int RunPrismaMigrateDev(Ports p, string[] args)
     {
         if (Args.Value(args, "--name") == null)
         {
-            OutputFormatter.WriteError("Usage: safe db prisma-migrate-dev --name <migration-name>");
+            p.Render.Error("Usage: safe db prisma-migrate-dev --name <migration-name>");
             return 1;
         }
 
-        return RunNpx(["prisma", "migrate", "dev", ..args], json);
+        return RunNpx(p, ["prisma", "migrate", "dev", ..args]);
     }
 
-    private static int RunPrismaMigrateDeploy(string[] args, bool json) => RunNpx(["prisma", "migrate", "deploy"], json);
+    internal static int RunPrismaMigrateDeploy(Ports p, string[] args) => RunNpx(p, ["prisma", "migrate", "deploy"]);
 
-    private static int RunPrismaDbPull(string[] args, bool json) => RunNpx(["prisma", "db", "pull"], json);
-    private static int RunPrismaDbSeed(string[] args, bool json) => RunNpx(["prisma", "db", "seed"], json);
+    internal static int RunPrismaDbPull(Ports p, string[] args) => RunNpx(p, ["prisma", "db", "pull"]);
+    internal static int RunPrismaDbSeed(Ports p, string[] args) => RunNpx(p, ["prisma", "db", "seed"]);
 
     // === Drizzle ===
 
-    private static int RunDrizzleCheck(string[] args, bool json) => RunNpx(["drizzle-kit", "check"], json);
-    private static int RunDrizzleStatus(string[] args, bool json) => RunNpx(["drizzle-kit", "status"], json);
+    internal static int RunDrizzleCheck(Ports p, string[] args) => RunNpx(p, ["drizzle-kit", "check"]);
+    internal static int RunDrizzleStatus(Ports p, string[] args) => RunNpx(p, ["drizzle-kit", "status"]);
 
-    private static int RunDrizzleGenerate(string[] args, bool json) => RunNpx(["drizzle-kit", "generate", ..args], json);
+    internal static int RunDrizzleGenerate(Ports p, string[] args) => RunNpx(p, ["drizzle-kit", "generate", ..args]);
 
-    private static int RunDrizzleMigrate(string[] args, bool json)
-    {
-        // drizzle-kit push is blocked entirely (it's the command that wiped 60+ tables)
-        // only allow drizzle-kit migrate which applies generated SQL files
-        return RunNpx(["drizzle-kit", "migrate", ..args], json);
-    }
+    // drizzle-kit push is intentionally not exposed (it's the command that wiped 60+ tables);
+    // only drizzle-kit migrate, which applies generated SQL files, is reachable.
+    internal static int RunDrizzleMigrate(Ports p, string[] args) => RunNpx(p, ["drizzle-kit", "migrate", ..args]);
 
     // === EF Core ===
 
-    private static int RunEfMigrationsList(string[] args, bool json)
+    internal static int RunEfMigrationsList(Ports p, string[] args) => Run.Tool(p, "dotnet", ["ef", "migrations", "list", ..args]);
+
+    internal static int RunEfMigrationsAdd(Ports p, string[] args)
     {
-        var (code, output, error) = ProcessRunner.Run("dotnet", ["ef", "migrations", "list", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
+        if (args.Length == 0) { p.Render.Error("Usage: safe db ef-migrations-add <name>"); return 1; }
+        return Run.Tool(p, "dotnet", ["ef", "migrations", "add", ..args]);
     }
 
-    private static int RunEfMigrationsAdd(string[] args, bool json)
-    {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe db ef-migrations-add <name>"); return 1; }
-        var (code, output, error) = ProcessRunner.Run("dotnet", ["ef", "migrations", "add", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
+    internal static int RunEfDatabaseUpdate(Ports p, string[] args) => Run.Tool(p, "dotnet", ["ef", "database", "update", ..args]);
 
-    private static int RunEfDatabaseUpdate(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("dotnet", ["ef", "database", "update", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
-
-    private static int RunEfMigrationsScript(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("dotnet", ["ef", "migrations", "script", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
+    internal static int RunEfMigrationsScript(Ports p, string[] args) => Run.Tool(p, "dotnet", ["ef", "migrations", "script", ..args]);
 
     // === Laravel / Artisan ===
 
-    private static int RunArtisanMigrateStatus(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("php", ["artisan", "migrate:status"]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
-
-    private static int RunArtisanMigrate(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("php", ["artisan", "migrate", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
+    internal static int RunArtisanMigrateStatus(Ports p, string[] args) => Run.Tool(p, "php", ["artisan", "migrate:status"]);
+    internal static int RunArtisanMigrate(Ports p, string[] args) => Run.Tool(p, "php", ["artisan", "migrate", ..args]);
 
     // === Django ===
 
-    private static int RunDjangoShowMigrations(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("python", ["manage.py", "showmigrations", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
-
-    private static int RunDjangoMigrate(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("python", ["manage.py", "migrate", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
-
-    private static int RunDjangoMakeMigrations(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("python", ["manage.py", "makemigrations", ..args]);
-        if (json) OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else { OutputFormatter.WritePassthrough(output); OutputFormatter.WritePassthroughError(error); }
-        return code;
-    }
+    internal static int RunDjangoShowMigrations(Ports p, string[] args) => Run.Tool(p, "python", ["manage.py", "showmigrations", ..args]);
+    internal static int RunDjangoMigrate(Ports p, string[] args) => Run.Tool(p, "python", ["manage.py", "migrate", ..args]);
+    internal static int RunDjangoMakeMigrations(Ports p, string[] args) => Run.Tool(p, "python", ["manage.py", "makemigrations", ..args]);
 }

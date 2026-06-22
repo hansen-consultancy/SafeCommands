@@ -12,12 +12,12 @@ namespace SafeCommands.Tests;
 /// Pins the policies wired onto the command groups (git, db, docker, process, npm, pnpm)
 /// whose inline validation was migrated to declared Policy chains.
 ///
-/// SPAWN HAZARD: git, db, and process handlers still call the static ProcessRunner.Run directly
+/// SPAWN HAZARD: git and process handlers still call the static ProcessRunner.Run directly
 /// (not ports.Exec), so an ALLOWED/clean or REWRITE input pushed through CommandDispatcher.Execute
-/// would spawn a real git/php/python process. Therefore every allow/clean/rewrite case for those
+/// would spawn a real git process. Therefore every allow/clean/rewrite case for those
 /// groups asserts on the policy DIRECTLY (Find(...)!.Policy.Evaluate — pure, no spawn). Only blocked
 /// cases may go through the dispatcher, and only where the central render path is the thing under test.
-/// (docker/npm/pnpm now route through ports.Exec, so a FakeExecutor absorbs their spawns — see the
+/// (docker/npm/pnpm/db now route through ports.Exec, so a FakeExecutor absorbs their spawns — see the
 /// dispatch-level allow tests at the end, which were impossible before this migration.)
 /// </summary>
 public class MigratedCommandPolicyTests
@@ -683,5 +683,43 @@ public class MigratedCommandPolicyTests
         var call = Assert.Single(exec.Calls);
         Assert.Equal("npm", call.Tool);
         Assert.Equal(new[] { "run", "build" }, call.Args);
+    }
+
+    [Fact]
+    public void Dispatch_DbPrismaStatus_Allowed_RoutesThroughExecutor_NoRealSpawn()
+    {
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("db", "prisma-status");
+        Assert.NotNull(cmd);
+        var exec = new FakeExecutor();
+        var render = new FakeRenderer();
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "db", "prisma-status", []);
+
+        Assert.Equal(0, rc);
+        Assert.Empty(render.Blocks);
+        var call = Assert.Single(exec.Calls);
+        Assert.Equal("npx", call.Tool);
+        Assert.Equal(new[] { "prisma", "migrate", "status" }, call.Args);
+    }
+
+    [Fact]
+    public void Dispatch_DbMigrateDev_DestructiveFlag_Blocked_NeverSpawns()
+    {
+        // The destructive-flag block is enforced at dispatch BEFORE the handler runs, so a blocked
+        // db migrate never reaches the (now ports-backed) executor.
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("db", "prisma-migrate-dev");
+        Assert.NotNull(cmd);
+        var exec = new FakeExecutor();
+        var render = new FakeRenderer();
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "db", "prisma-migrate-dev", ["--name", "x", "--force"]);
+
+        Assert.Equal(1, rc);
+        Assert.Empty(exec.Calls);
+        Assert.Single(render.Blocks);
     }
 }
