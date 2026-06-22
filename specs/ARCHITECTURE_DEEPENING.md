@@ -159,23 +159,35 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 > assertable at the dispatch boundary against a `FakeExecutor` (+19 tests). Shim count drops **5 → 4**.
 > Pre-existing dead `PrismaBlockedCommands` set (declared, never read) left in place — out of scope.
 >
-> **Slice 3 shipped (this PR):** **`env`** migrated — the first **dual-mode** group (every handler
+> **Slice 3 shipped (PR #17):** **`env`** migrated — the first **dual-mode** group (every handler
 > hand-built a typed payload and branched on `bool json`). Now routes through `IRenderer` via the
 > sanctioned `if (JsonMode) Render.Json(payload) else Render.Info(...)` pattern — the first real use of
 > `Render.Json` outside `generate` — dropping all `OutputFormatter` + raw `Console.WriteLine`. `env check`
 > / `env which` spawns moved onto `IExecutor` (`where`/`which` probe + `--version`), so env is now fully
-> `FakeExecutor`/`FakeRenderer`-testable incl. the secret-masking path (+17 tests, incl. mask-under-`--all`
+> `FakeExecutor`/`FakeRenderer`-testable incl. the secret-masking path (+19 tests, incl. mask-under-`--all`
 > and exclude-without-`--all`). Shim count drops **4 → 3**. Two small documented behavior changes: the
 > `env vars --all` warning moved to `Render.Warning` (auto-suppressed under `--json`; `"WARNING:"` → `"Warning:"`
 > prefix), and `RunCheck` dropped `CommandExists`'s try/catch (a missing `where`/`which` binary — effectively
 > impossible on a dev host — now surfaces via the global handler rather than silently reporting not-found).
 >
-> **Remaining:** migrate the 3 hardest groups (`git, file, process` — `git`'s dual-mode `status`,
-> `file`'s 6 `WriteBlocked` `--json` fork + path sandboxing, `process`'s raw `System.Diagnostics.Process`
-> kill/enumerate which has **no `IExecutor` seam yet** — it needs a process-host port, not a mechanical
-> pass); then the shim ctor, `IRenderer.JsonMode`, and most of `OutputFormatter` can be deleted. Two
-> independent items remain: consolidate the 54 inline `"Usage:"` guards into a declarative arg-spec at
-> dispatch, and extract `Program.cs`'s outer shell into a table-testable `Dispatch(Ports,string[])`.
+> **Slice 4 shipped (this PR):** **`git`** migrated — the core safety surface. The central `RunGit`
+> helper collapsed onto `Run.Tool`, and the two **dual-mode** handlers (`status`, `branch`) keep their
+> custom-JSON parse but now spawn the probe via `IExecutor` and emit via `Render.Json` (reusing the env
+> pattern). Every git spawn — passthrough *and* the `--porcelain`/`--list` probes — now routes through
+> `IExecutor`, **closing git's SPAWN HAZARD**: an allowed `git status` is now absorbed by a `FakeExecutor`
+> at the dispatch boundary (new `Dispatch_GitStatus_Allowed...` test). The declared Policy chains in
+> `Register()` (force-push/amend/clean-tree/`RequireGitRepo`/`AllowOnlyFlags`) are untouched — enforced
+> centrally at dispatch, independent of the handler signature. +44 tests pinning every argv shape
+> (single-positional vs splat, `checkout-file`'s `--` insertion, stash subcommands, both JSON parsers).
+> Shim count drops **3 → 2**. Behavior-preserving (no argv or policy change).
+>
+> **Remaining:** migrate the 2 hardest groups. **`file`** — 6 `WriteBlocked` `--json` fork + path
+> sandboxing (STRIDE E1); its writes go through `IWorkspace`/`File.*`, not `IExecutor`, so the migration
+> is rendering + signature, not execution. **`process`** — raw `System.Diagnostics.Process`
+> kill/enumerate has **no `IExecutor` seam yet**; it needs a process-host port, not a mechanical pass.
+> Then the shim ctor, `IRenderer.JsonMode`, and most of `OutputFormatter` can be deleted. Two independent
+> items remain: consolidate the 54 inline `"Usage:"` guards into a declarative arg-spec at dispatch, and
+> extract `Program.cs`'s outer shell into a table-testable `Dispatch(Ports,string[])`.
 
 **Cluster:** `CommandDefinition`'s legacy shim (`:43-52`) + the **two live output stacks**
 (static `OutputFormatter`, ~28 `WriteBlocked` sites across 13 files, vs. `ConsoleRenderer`,
