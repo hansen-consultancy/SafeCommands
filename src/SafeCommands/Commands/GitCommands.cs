@@ -25,7 +25,7 @@ static class GitCommands
             new("git", "diff", "Show changes", "safe git diff [--staged] [--name-only] [file...]", SafetyLevel.ReadOnly, RunDiff)
                 { Policy = Policy.Default.RequireGitRepo().AllowOnlyFlags(DiffAllowedFlags, GitValueFlags, keepPositionals: true) },
             new("git", "show", "Show commit or object details", "safe git show <ref>", SafetyLevel.ReadOnly, RunShow)
-                { Policy = Policy.Default.RequireGitRepo() },
+                { Policy = Policy.Default.RequireGitRepo(), MinArgs = 1 },
             new("git", "branch", "List branches", "safe git branch", SafetyLevel.ReadOnly, RunBranch)
                 { Policy = Policy.Default.RequireGitRepo() },
             new("git", "tag", "List tags", "safe git tag", SafetyLevel.ReadOnly, RunTag)
@@ -33,9 +33,9 @@ static class GitCommands
             new("git", "remote", "List or show remotes", "safe git remote [show <name>]", SafetyLevel.ReadOnly, RunRemote)
                 { Policy = Policy.Default.RequireGitRepo() },
             new("git", "blame", "Show file blame annotations", "safe git blame <file>", SafetyLevel.ReadOnly, RunBlame)
-                { Policy = Policy.Default.RequireGitRepo() },
+                { Policy = Policy.Default.RequireGitRepo(), MinArgs = 1 },
             new("git", "rev-parse", "Resolve git references", "safe git rev-parse <ref>", SafetyLevel.ReadOnly, RunRevParse)
-                { Policy = Policy.Default.RequireGitRepo() },
+                { Policy = Policy.Default.RequireGitRepo(), MinArgs = 1 },
             new("git", "ls-files", "List tracked files", "safe git ls-files [--modified] [--others]", SafetyLevel.ReadOnly, RunLsFiles)
                 { Policy = Policy.Default.RequireGitRepo() },
             new("git", "shortlog", "Summarize git log output", "safe git shortlog [-s] [-n]", SafetyLevel.ReadOnly, RunShortlog)
@@ -63,7 +63,7 @@ static class GitCommands
             new("git", "fetch", "Fetch from remote", "safe git fetch [<remote>]", SafetyLevel.SafeWrite, RunFetch)
                 { Policy = Policy.Default.RequireGitRepo() },
             new("git", "branch-create", "Create a new branch", "safe git branch-create <name>", SafetyLevel.SafeWrite, RunBranchCreate)
-                { Policy = Policy.Default.RequireGitRepo() },
+                { Policy = Policy.Default.RequireGitRepo(), MinArgs = 1 },
 
             // Checked writes
             new("git", "pull", "Pull changes (requires clean tree)", "safe git pull [<remote>] [<branch>]", SafetyLevel.CheckedWrite, RunPull)
@@ -71,13 +71,13 @@ static class GitCommands
             new("git", "push", "Push to remote (--force-with-lease ok, --force blocked)", "safe git push [<remote>] [<branch>] [--force-with-lease]", SafetyLevel.CheckedWrite, RunPush)
                 { Policy = Policy.Default.RequireGitRepo().BlockFlags(PushBlockedFlags, "Force push and delete are not allowed", "safe git push (without --force)") },
             new("git", "checkout", "Switch branch (requires clean tree; -b creates a new branch and is exempt)", "safe git checkout [-b] <branch>", SafetyLevel.CheckedWrite, RunCheckout)
-                { Policy = Policy.Default.RequireGitRepo().BlockFlags(["."], "Discarding all changes is not allowed", "safe git checkout-file <specific-file> to restore individual files").RequireCleanTree(exemptFlags: ["-b"]) },
+                { Policy = Policy.Default.RequireGitRepo().BlockFlags(["."], "Discarding all changes is not allowed", "safe git checkout-file <specific-file> to restore individual files").RequireCleanTree(exemptFlags: ["-b"]), MinArgs = 1 },
             new("git", "checkout-file", "Restore a specific file from HEAD", "safe git checkout-file <file>", SafetyLevel.CheckedWrite, RunCheckoutFile)
-                { Policy = Policy.Default.RequireGitRepo().BlockFlags([".", "*"], "Discarding all changes is not allowed", "Specify individual files: safe git checkout-file <file>") },
+                { Policy = Policy.Default.RequireGitRepo().BlockFlags([".", "*"], "Discarding all changes is not allowed", "Specify individual files: safe git checkout-file <file>"), MinArgs = 1 },
             new("git", "merge", "Merge branch (requires clean tree)", "safe git merge <branch>", SafetyLevel.CheckedWrite, RunMerge)
-                { Policy = Policy.Default.RequireGitRepo().RequireCleanTree() },
+                { Policy = Policy.Default.RequireGitRepo().RequireCleanTree(), MinArgs = 1 },
             new("git", "cherry-pick", "Cherry-pick a single commit", "safe git cherry-pick <hash>", SafetyLevel.CheckedWrite, RunCherryPick)
-                { Policy = Policy.Default.RequireGitRepo() },
+                { Policy = Policy.Default.RequireGitRepo(), MinArgs = 1 },
         ]);
     }
 
@@ -103,11 +103,7 @@ static class GitCommands
 
     internal static int RunDiff(Ports p, string[] args) => RunGit(p, ["diff", ..args]);
 
-    internal static int RunShow(Ports p, string[] args)
-    {
-        if (args.Length == 0) { p.Render.Error("Usage: safe git show <ref>"); return 1; }
-        return RunGit(p, ["show", args[0]]);
-    }
+    internal static int RunShow(Ports p, string[] args) => RunGit(p, ["show", args[0]]);
 
     internal static int RunBranch(Ports p, string[] args)
     {
@@ -132,17 +128,9 @@ static class GitCommands
         return RunGit(p, ["remote", "-v"]);
     }
 
-    internal static int RunBlame(Ports p, string[] args)
-    {
-        if (args.Length == 0) { p.Render.Error("Usage: safe git blame <file>"); return 1; }
-        return RunGit(p, ["blame", args[0]]);
-    }
+    internal static int RunBlame(Ports p, string[] args) => RunGit(p, ["blame", args[0]]);
 
-    internal static int RunRevParse(Ports p, string[] args)
-    {
-        if (args.Length == 0) { p.Render.Error("Usage: safe git rev-parse <ref>"); return 1; }
-        return RunGit(p, ["rev-parse", ..args]);
-    }
+    internal static int RunRevParse(Ports p, string[] args) => RunGit(p, ["rev-parse", ..args]);
 
     internal static int RunLsFiles(Ports p, string[] args) => RunGit(p, ["ls-files", ..args]);
 
@@ -189,11 +177,7 @@ static class GitCommands
 
     internal static int RunFetch(Ports p, string[] args) => RunGit(p, ["fetch", ..args]);
 
-    internal static int RunBranchCreate(Ports p, string[] args)
-    {
-        if (args.Length == 0) { p.Render.Error("Usage: safe git branch-create <name>"); return 1; }
-        return RunGit(p, ["branch", args[0]]);
-    }
+    internal static int RunBranchCreate(Ports p, string[] args) => RunGit(p, ["branch", args[0]]);
 
     // === Checked writes ===
 
@@ -201,35 +185,11 @@ static class GitCommands
 
     internal static int RunPush(Ports p, string[] args) => RunGit(p, ["push", ..args]);
 
-    internal static int RunCheckout(Ports p, string[] args)
-    {
-        if (args.Length == 0)
-        {
-            p.Render.Error("Usage: safe git checkout [-b] <branch>");
-            return 1;
-        }
-        return RunGit(p, ["checkout", ..args]);
-    }
+    internal static int RunCheckout(Ports p, string[] args) => RunGit(p, ["checkout", ..args]);
 
-    internal static int RunCheckoutFile(Ports p, string[] args)
-    {
-        if (args.Length == 0)
-        {
-            p.Render.Error("Usage: safe git checkout-file <file>");
-            return 1;
-        }
-        return RunGit(p, ["checkout", "--", args[0]]);
-    }
+    internal static int RunCheckoutFile(Ports p, string[] args) => RunGit(p, ["checkout", "--", args[0]]);
 
-    internal static int RunMerge(Ports p, string[] args)
-    {
-        if (args.Length == 0) { p.Render.Error("Usage: safe git merge <branch>"); return 1; }
-        return RunGit(p, ["merge", args[0]]);
-    }
+    internal static int RunMerge(Ports p, string[] args) => RunGit(p, ["merge", args[0]]);
 
-    internal static int RunCherryPick(Ports p, string[] args)
-    {
-        if (args.Length == 0) { p.Render.Error("Usage: safe git cherry-pick <hash>"); return 1; }
-        return RunGit(p, ["cherry-pick", args[0]]);
-    }
+    internal static int RunCherryPick(Ports p, string[] args) => RunGit(p, ["cherry-pick", args[0]]);
 }

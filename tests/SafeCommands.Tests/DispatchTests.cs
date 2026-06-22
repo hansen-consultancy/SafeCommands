@@ -252,6 +252,96 @@ public class DispatchTests
         Assert.Contains("outside the project directory", doc.RootElement.GetProperty("reason").GetString());
     }
 
+    // ---- MinArgs: the declarative positional-count guard, enforced at dispatch (after policy) ----
+
+    [Theory]
+    // git
+    [InlineData("git", "show")]
+    [InlineData("git", "blame")]
+    [InlineData("git", "rev-parse")]
+    [InlineData("git", "branch-create")]
+    [InlineData("git", "merge")]
+    [InlineData("git", "cherry-pick")]
+    [InlineData("git", "checkout")]
+    [InlineData("git", "checkout-file")]
+    // docker
+    [InlineData("docker", "logs")]
+    [InlineData("docker", "inspect")]
+    [InlineData("docker", "stop")]
+    [InlineData("docker", "start")]
+    [InlineData("docker", "restart")]
+    // env
+    [InlineData("env", "check")]
+    [InlineData("env", "which")]
+    // dotnet
+    [InlineData("dotnet", "tool-install")]
+    [InlineData("dotnet", "add-package")]
+    [InlineData("dotnet", "add-reference")]
+    [InlineData("dotnet", "new")]
+    // bun
+    [InlineData("bun", "build")]
+    // npm / pnpm (view/why only; the `run` commands keep their script-contract guard inline)
+    [InlineData("npm", "view")]
+    [InlineData("pnpm", "why")]
+    // db
+    [InlineData("db", "ef-migrations-add")]
+    // process
+    [InlineData("process", "find")]
+    [InlineData("process", "kill-name")]
+    [InlineData("process", "kill-port")]
+    // file (read/exists/info/count/find/mkdir/write/delete-tracked/delete-pattern = 1; copy/move = 2)
+    [InlineData("file", "read")]
+    [InlineData("file", "exists")]
+    [InlineData("file", "info")]
+    [InlineData("file", "count")]
+    [InlineData("file", "find")]
+    [InlineData("file", "mkdir")]
+    [InlineData("file", "write")]
+    [InlineData("file", "delete-tracked")]
+    [InlineData("file", "delete-pattern")]
+    [InlineData("file", "copy")]
+    [InlineData("file", "move")]
+    public void Execute_BelowMinArgs_EmitsUsageError_NoSpawn(string group, string command)
+    {
+        // Empty args clear every policy on these commands (RequireGitRepo passes via FakeRepoProbe;
+        // path/script/flag rules see no token to reject), so the MinArgs check is the thing under test:
+        // it renders the uniform "Usage: {Usage}" and returns 1 before the handler — the single
+        // declarative home for what used to be ~30 scattered inline "Usage:" guards.
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find(group, command);
+        Assert.NotNull(cmd);
+        Assert.True(cmd.MinArgs >= 1, $"{group} {command} should declare MinArgs");
+        var (ports, exec, render) = Setup();
+
+        var rc = CommandDispatcher.Execute(cmd, ports, group, command, []);
+
+        Assert.Equal(1, rc);
+        Assert.Empty(exec.Calls);      // handler never ran -> nothing spawned
+        Assert.Empty(render.Blocks);   // a usage error, not a policy block
+        Assert.Equal($"Usage: {cmd.Usage}", Assert.Single(render.Errors));
+    }
+
+    [Theory]
+    [InlineData("copy")]
+    [InlineData("move")]
+    public void Execute_TwoPathCommand_OneArg_EmitsUsageError(string command)
+    {
+        // MinArgs=2 boundary: a single within-project path clears the path policy but is still below
+        // MinArgs, so the usage error fires. [] (covered above) can't pin the 1-vs-2 boundary.
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("file", command);
+        Assert.NotNull(cmd);
+        Assert.Equal(2, cmd.MinArgs);
+        var (ports, exec, render) = Setup();  // FakeWorkspace ProjectRoot "/proj"
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "file", command, ["/proj/a"]);
+
+        Assert.Equal(1, rc);
+        Assert.Empty(exec.Calls);
+        Assert.Empty(render.Blocks);   // "/proj/a" is within project, so no path block — MinArgs fires
+        Assert.Equal($"Usage: {cmd.Usage}", Assert.Single(render.Errors));
+    }
+
     // ---- handler/policy case agreement: the --in flag the handler honors is the one the policy checks ----
 
     [Fact]

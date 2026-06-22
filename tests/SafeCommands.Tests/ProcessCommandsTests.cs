@@ -87,14 +87,6 @@ public class ProcessCommandsTests
     // === find ===
 
     [Fact]
-    public void RunFind_NoArgs_EmitsError()
-    {
-        var (ports, _, render, _) = Setup();
-        Assert.Equal(1, ProcessCommands.RunFind(ports, []));
-        Assert.Single(render.Errors);
-    }
-
-    [Fact]
     public void RunFind_Match_EmitsRow()
     {
         var (ports, _, render, host) = Setup();
@@ -113,15 +105,6 @@ public class ProcessCommandsTests
     }
 
     // === kill-name (the dev-tools allowlist is enforced at dispatch, not here) ===
-
-    [Fact]
-    public void RunKillName_NoArgs_EmitsError()
-    {
-        var (ports, _, render, host) = Setup();
-        Assert.Equal(1, ProcessCommands.RunKillName(ports, []));
-        Assert.Single(render.Errors);
-        Assert.Empty(host.KillCalls);
-    }
 
     [Fact]
     public void RunKillName_KillsAllMatches_ThroughHost()
@@ -168,14 +151,6 @@ public class ProcessCommandsTests
     }
 
     // === kill-port (port query via executor, kill via host; OS-branched fixture) ===
-
-    [Fact]
-    public void RunKillPort_NoArgs_EmitsError()
-    {
-        var (ports, _, render, _) = Setup();
-        Assert.Equal(1, ProcessCommands.RunKillPort(ports, []));
-        Assert.Single(render.Errors);
-    }
 
     [Theory]
     [InlineData("abc")]

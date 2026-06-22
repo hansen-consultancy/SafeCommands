@@ -90,16 +90,6 @@ public class DbCommandsTests
     }
 
     [Fact]
-    public void RunEfMigrationsAdd_NoArgs_EmitsErrorAndDoesNotSpawn()
-    {
-        var (ports, exec, render) = Setup();
-        var rc = DbCommands.RunEfMigrationsAdd(ports, []);
-        Assert.Equal(1, rc);
-        Assert.Empty(exec.Calls);
-        Assert.Single(render.Errors);
-    }
-
-    [Fact]
     public void RunEfMigrationsAdd_WithName_AppendsName()
     {
         var (ports, exec, _) = Setup();

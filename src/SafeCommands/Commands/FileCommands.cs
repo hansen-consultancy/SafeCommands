@@ -37,36 +37,36 @@ static class FileCommands
             new("file", "list", "List directory contents", "safe file list [<path>]", SafetyLevel.ReadOnly, RunList)
                 { Policy = Policy.Default.RequirePathWithinProject() },
             new("file", "read", "Read file content", "safe file read <path> [--lines <n>]", SafetyLevel.ReadOnly, RunRead)
-                { Policy = Policy.Default.RequirePathWithinProject() },
+                { Policy = Policy.Default.RequirePathWithinProject(), MinArgs = 1 },
             new("file", "exists", "Check if file or directory exists", "safe file exists <path>", SafetyLevel.ReadOnly, RunExists)
-                { Policy = Policy.Default.RequirePathWithinProject() },
+                { Policy = Policy.Default.RequirePathWithinProject(), MinArgs = 1 },
             new("file", "info", "Show file metadata", "safe file info <path>", SafetyLevel.ReadOnly, RunInfo)
-                { Policy = Policy.Default.RequirePathWithinProject() },
+                { Policy = Policy.Default.RequirePathWithinProject(), MinArgs = 1 },
             new("file", "count", "Count lines/words/chars in a file", "safe file count <path> [--lines|--words|--chars]", SafetyLevel.ReadOnly, RunCount)
-                { Policy = Policy.Default.RequirePathWithinProject() },
+                { Policy = Policy.Default.RequirePathWithinProject(), MinArgs = 1 },
             new("file", "find", "Find files by pattern", "safe file find <pattern> [--in <dir>]", SafetyLevel.ReadOnly, RunFind)
-                { Policy = Policy.Default.RequirePathWithinProject(new PathArg.FlagValue("--in")) },
+                { Policy = Policy.Default.RequirePathWithinProject(new PathArg.FlagValue("--in")), MinArgs = 1 },
             new("file", "tree", "Show directory tree", "safe file tree [<path>] [--depth <n>]", SafetyLevel.ReadOnly, RunTree)
                 { Policy = Policy.Default.RequirePathWithinProject() },
 
             // Safe writes
             new("file", "mkdir", "Create directory", "safe file mkdir <path>", SafetyLevel.SafeWrite, RunMkdir)
-                { Policy = Policy.Default.RequirePathWithinProject() },
+                { Policy = Policy.Default.RequirePathWithinProject(), MinArgs = 1 },
             new("file", "copy", "Copy file (no overwrite)", "safe file copy <src> <dest>", SafetyLevel.SafeWrite, RunCopy)
-                { Policy = Policy.Default.RequirePathWithinProject(0).RequirePathWithinProject(1) },
+                { Policy = Policy.Default.RequirePathWithinProject(0).RequirePathWithinProject(1), MinArgs = 2 },
             new("file", "write", "Write to new file (no overwrite)", "safe file write <path> --content <text>", SafetyLevel.SafeWrite, RunWrite)
-                { Policy = Policy.Default.RequirePathWithinProject() },
+                { Policy = Policy.Default.RequirePathWithinProject(), MinArgs = 1 },
 
             // Targeted writes
             new("file", "delete-tracked", "Delete a git-tracked file", "safe file delete-tracked <file>", SafetyLevel.CheckedWrite, RunDeleteTracked)
-                { Policy = Policy.Default.RequirePathWithinProject() },
+                { Policy = Policy.Default.RequirePathWithinProject(), MinArgs = 1 },
             new("file", "delete-temp", "Delete temp/cache/build files", "safe file delete-temp [<path>]", SafetyLevel.CheckedWrite, RunDeleteTemp)
                 { Policy = Policy.Default.RequirePathWithinProject() },
             new("file", "delete-locks", "Delete lock files", "safe file delete-locks", SafetyLevel.CheckedWrite, RunDeleteLocks),
             new("file", "delete-pattern", "Delete files matching pattern in safe dirs", "safe file delete-pattern <glob> --in <dir>", SafetyLevel.CheckedWrite, RunDeletePattern)
-                { Policy = Policy.Default.RequirePathWithinProject(new PathArg.FlagValue("--in")).RequireWithinSafeDeleteDir(new PathArg.FlagValue("--in"), SafeDeleteDirs) },
+                { Policy = Policy.Default.RequirePathWithinProject(new PathArg.FlagValue("--in")).RequireWithinSafeDeleteDir(new PathArg.FlagValue("--in"), SafeDeleteDirs), MinArgs = 1 },
             new("file", "move", "Move/rename git-tracked file", "safe file move <src> <dest>", SafetyLevel.CheckedWrite, RunMove)
-                { Policy = Policy.Default.RequirePathWithinProject(0).RequirePathWithinProject(1) },
+                { Policy = Policy.Default.RequirePathWithinProject(0).RequirePathWithinProject(1), MinArgs = 2 },
         ]);
     }
 
@@ -103,7 +103,6 @@ static class FileCommands
 
     internal static int RunRead(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe file read <path>"); return 1; }
         var path = args[0];
         if (!File.Exists(path))
         {
@@ -127,7 +126,6 @@ static class FileCommands
 
     internal static int RunExists(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe file exists <path>"); return 1; }
         var path = args[0];
         var fileExists = File.Exists(path);
         var dirExists = Directory.Exists(path);
@@ -144,7 +142,6 @@ static class FileCommands
 
     internal static int RunInfo(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe file info <path>"); return 1; }
         var path = args[0];
 
         if (File.Exists(path))
@@ -185,7 +182,6 @@ static class FileCommands
 
     internal static int RunCount(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe file count <path> [--lines|--words|--chars]"); return 1; }
         var path = args[0];
         if (!File.Exists(path)) { p.Render.Error($"File not found: {path}"); return 1; }
 
@@ -220,8 +216,6 @@ static class FileCommands
 
     internal static int RunFind(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe file find <pattern> [--in <dir>]"); return 1; }
-
         var pattern = args[0];
         var dir = Args.Value(args, "--in") ?? ".";
 
@@ -321,7 +315,6 @@ static class FileCommands
 
     internal static int RunMkdir(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe file mkdir <path>"); return 1; }
         var path = args[0];
         Directory.CreateDirectory(path);
         if (p.Render.JsonMode)
@@ -333,7 +326,6 @@ static class FileCommands
 
     internal static int RunCopy(Ports p, string[] args)
     {
-        if (args.Length < 2) { p.Render.Error("Usage: safe file copy <src> <dest>"); return 1; }
         var src = args[0];
         var dest = args[1];
 
@@ -355,7 +347,6 @@ static class FileCommands
 
     internal static int RunWrite(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe file write <path> --content <text>"); return 1; }
         var path = args[0];
 
         if (File.Exists(path))
@@ -389,7 +380,6 @@ static class FileCommands
 
     internal static int RunDeleteTracked(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe file delete-tracked <file>"); return 1; }
         var file = args[0];
 
         if (!File.Exists(file)) { p.Render.Error($"File not found: {file}"); return 1; }
@@ -529,8 +519,6 @@ static class FileCommands
 
     internal static int RunDeletePattern(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe file delete-pattern <glob> --in <dir>"); return 1; }
-
         var pattern = args[0];
         var dir = Args.Value(args, "--in");
         if (dir == null)
@@ -570,7 +558,6 @@ static class FileCommands
 
     internal static int RunMove(Ports p, string[] args)
     {
-        if (args.Length < 2) { p.Render.Error("Usage: safe file move <src> <dest>"); return 1; }
         var src = args[0];
         var dest = args[1];
 

@@ -21,7 +21,8 @@ static class BunCommands
             new("bun", "run", "Run package script (allowed list)", "safe bun run <script>", SafetyLevel.SafeWrite, RunScript)
                 { Policy = Policy.Default.AllowOnlyFirstArg(PackageScripts.Allowed, "Script") },
             new("bun", "test", "Run tests", "safe bun test", SafetyLevel.SafeWrite, RunTest),
-            new("bun", "build", "Build/bundle project", "safe bun build <entrypoint>", SafetyLevel.SafeWrite, RunBuild),
+            new("bun", "build", "Build/bundle project", "safe bun build <entrypoint>", SafetyLevel.SafeWrite, RunBuild)
+                { MinArgs = 1 },
         ]);
     }
 
@@ -47,13 +48,5 @@ static class BunCommands
 
     internal static int RunTest(Ports p, string[] args) => Run.Bun(p, "test", args);
 
-    internal static int RunBuild(Ports p, string[] args)
-    {
-        if (args.Length == 0)
-        {
-            p.Render.Error("Usage: safe bun build <entrypoint>");
-            return 1;
-        }
-        return Run.Bun(p, "build", args);
-    }
+    internal static int RunBuild(Ports p, string[] args) => Run.Bun(p, "build", args);
 }

@@ -14,7 +14,7 @@ static class NpmCommands
             new("npm", "outdated", "Check outdated dependencies", "safe npm outdated", SafetyLevel.ReadOnly, RunOutdated),
             new("npm", "list", "List installed packages", "safe npm list [--depth <n>]", SafetyLevel.ReadOnly, RunList),
             new("npm", "audit", "Run security audit", "safe npm audit", SafetyLevel.ReadOnly, RunAudit),
-            new("npm", "view", "View package info", "safe npm view <package>", SafetyLevel.ReadOnly, RunView),
+            new("npm", "view", "View package info", "safe npm view <package>", SafetyLevel.ReadOnly, RunView) { MinArgs = 1 },
 
             // Targeted writes - install runs postinstall scripts (supply chain risk)
             new("npm", "install", "Install dependencies (runs postinstall scripts!)", "safe npm install [<package>] [--ignore-scripts]", SafetyLevel.CheckedWrite, RunInstall),
@@ -52,10 +52,7 @@ static class NpmCommands
         => Run.Tool(p, "npm", p.Render.JsonMode ? ["audit", "--json"] : ["audit"]);
 
     internal static int RunView(Ports p, string[] args)
-    {
-        if (args.Length == 0) { p.Render.Error("Usage: safe npm view <package>"); return 1; }
-        return Run.Tool(p, "npm", p.Render.JsonMode ? ["view", args[0], "--json"] : ["view", args[0]]);
-    }
+        => Run.Tool(p, "npm", p.Render.JsonMode ? ["view", args[0], "--json"] : ["view", args[0]]);
 
     internal static int RunInstall(Ports p, string[] args)
     {

@@ -66,16 +66,6 @@ public class EnvCommandsTests
     // === check (routes through the executor) ===
 
     [Fact]
-    public void RunCheck_NoArgs_EmitsErrorAndDoesNotSpawn()
-    {
-        var (ports, exec, render) = Setup();
-        var rc = EnvCommands.RunCheck(ports, []);
-        Assert.Equal(1, rc);
-        Assert.Empty(exec.Calls);
-        Assert.Single(render.Errors);
-    }
-
-    [Fact]
     public void RunCheck_Available_ProbesThenQueriesVersion_ParsesFirstLine()
     {
         var (ports, exec, render) = Setup();
@@ -121,16 +111,6 @@ public class EnvCommandsTests
     }
 
     // === which (routes through the executor) ===
-
-    [Fact]
-    public void RunWhich_NoArgs_EmitsErrorAndDoesNotSpawn()
-    {
-        var (ports, exec, render) = Setup();
-        var rc = EnvCommands.RunWhich(ports, []);
-        Assert.Equal(1, rc);
-        Assert.Empty(exec.Calls);
-        Assert.Single(render.Errors);
-    }
 
     [Fact]
     public void RunWhich_Found_EmitsFirstLinePath()

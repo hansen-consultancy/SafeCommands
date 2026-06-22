@@ -230,7 +230,17 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 >   `MetaCommands`, and `ConsoleRenderer` depends on its `JsonOptions`), so full deletion waits on migrating
 >   `meta`; and `IRenderer.JsonMode` remains load-bearing (every dual-mode handler branches on it) — removing
 >   it needs the deeper "renderer owns both renderings from a typed payload" redesign, not a mechanical pass.
-> - **Consolidate the 54 inline `"Usage:"` guards** into a declarative arg-spec at dispatch.
+> - **Consolidate the inline `"Usage:"` guards.** ✅ **Slice 8 (this PR):** added
+>   `CommandDefinition.MinArgs`, enforced once at the dispatch seam (after policy, before the handler)
+>   emitting `Usage: {Usage}`. **37 commands** (git/docker/env/db/process/file/dotnet/bun + npm `view`/pnpm
+>   `why`) dropped their inline `args.Length` count-guards and now trust their args; the removed
+>   per-handler no-arg tests collapsed into one parameterized `DispatchTests` theory. Genuine non-count
+>   contracts stay inline by design: the `run` commands (npm/pnpm/bun — require a valid script;
+>   `AllowOnlyFirstArg` permits empty args, so the guard is real), `file write --content`, `file
+>   delete-pattern --in`, `db prisma-migrate-dev --name`, `process kill-port`'s range check, and `git
+>   add`/`git commit`'s richer messages. The `generate` group and `proxy run` are deferred — their input
+>   guards are positional-extraction (`IsNullOrEmpty(Positionals(...))`) / subsystem-specific, not the
+>   uniform `args.Length` boilerplate this targets.
 > - **Extract `Program.cs`'s outer shell** (routing, `--json` strip + proxy arg-splice, `--help`, global
 >   try/catch) into a table-testable `Dispatch(Ports,string[])`.
 

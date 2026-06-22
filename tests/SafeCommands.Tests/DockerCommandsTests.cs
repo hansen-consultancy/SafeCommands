@@ -93,15 +93,8 @@ public class DockerCommandsTests
         Assert.Equal(new[] { "inspect", "web" }, Assert.Single(exec.Calls).Args);
     }
 
-    [Fact]
-    public void RunStop_NoArgs_EmitsErrorAndDoesNotSpawn()
-    {
-        var (ports, exec, render) = Setup();
-        var rc = DockerCommands.RunStop(ports, []);
-        Assert.Equal(1, rc);
-        Assert.Empty(exec.Calls);
-        Assert.Single(render.Errors);
-    }
+    // logs/inspect/stop/start/restart no-arg guards moved to the declarative MinArgs check at
+    // dispatch (see DispatchTests.Execute_BelowMinArgs_*).
 
     [Fact]
     public void RunComposeDown_SpawnsComposeDown()

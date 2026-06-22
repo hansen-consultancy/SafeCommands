@@ -71,25 +71,8 @@ public class DotnetCommandsTests
         Assert.Equal(new[] { "tool", "install", "-g", "dotnet-ef" }, Assert.Single(exec.Calls).Args);
     }
 
-    [Fact]
-    public void RunToolInstall_NoArgs_EmitsErrorAndDoesNotSpawn()
-    {
-        var (ports, exec, render) = Setup();
-        var rc = DotnetCommands.RunToolInstall(ports, []);
-        Assert.Equal(1, rc);
-        Assert.Empty(exec.Calls);
-        Assert.Single(render.Errors);
-    }
-
-    [Fact]
-    public void RunNew_NoArgs_EmitsErrorAndDoesNotSpawn()
-    {
-        var (ports, exec, render) = Setup();
-        var rc = DotnetCommands.RunNew(ports, []);
-        Assert.Equal(1, rc);
-        Assert.Empty(exec.Calls);
-        Assert.Single(render.Errors);
-    }
+    // tool-install/add-package/add-reference/new no-arg guards moved to the declarative MinArgs check
+    // at dispatch (see DispatchTests.Execute_BelowMinArgs_*).
 
     [Fact]
     public void RunTest_PropagatesExecExitCode()
