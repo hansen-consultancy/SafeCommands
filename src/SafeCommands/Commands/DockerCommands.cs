@@ -1,4 +1,4 @@
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
 using SafeCommands.Safety;
 using SafeCommands.Sugar;
@@ -44,78 +44,63 @@ static class DockerCommands
         ]);
     }
 
-    private static int RunDocker(string[] args, bool json)
-    {
-        var (code, output, error) = ProcessRunner.Run("docker", args);
-        if (json)
-            OutputFormatter.WriteJson(new { exitCode = code, output, error });
-        else
-        {
-            OutputFormatter.WritePassthrough(output);
-            OutputFormatter.WritePassthroughError(error);
-        }
-        return code;
-    }
-
-    private static int RunDockerCompose(string[] args, bool json)
-        => RunDocker(["compose", ..args], json);
+    private static int RunDocker(Ports p, string[] args) => Run.Tool(p, "docker", args);
+    private static int RunDockerCompose(Ports p, string[] args) => RunDocker(p, ["compose", ..args]);
 
     // Read-only
-    private static int RunPs(string[] args, bool json) => RunDocker(["ps", ..args], json);
-    private static int RunImages(string[] args, bool json) => RunDocker(["images", ..args], json);
-    private static int RunStats(string[] args, bool json) => RunDocker(["stats", "--no-stream", ..args], json);
-    private static int RunNetworkLs(string[] args, bool json) => RunDocker(["network", "ls", ..args], json);
-    private static int RunVolumeLs(string[] args, bool json) => RunDocker(["volume", "ls", ..args], json);
+    internal static int RunPs(Ports p, string[] args) => RunDocker(p, ["ps", ..args]);
+    internal static int RunImages(Ports p, string[] args) => RunDocker(p, ["images", ..args]);
+    internal static int RunStats(Ports p, string[] args) => RunDocker(p, ["stats", "--no-stream", ..args]);
+    internal static int RunNetworkLs(Ports p, string[] args) => RunDocker(p, ["network", "ls", ..args]);
+    internal static int RunVolumeLs(Ports p, string[] args) => RunDocker(p, ["volume", "ls", ..args]);
 
-    private static int RunLogs(string[] args, bool json)
+    internal static int RunLogs(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe docker logs <container>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe docker logs <container>"); return 1; }
         // Remove -f/--follow if present (would block forever in captured mode)
         var filtered = Args.Without(args, "-f", "--follow");
-        return RunDocker(["logs", ..filtered], json);
+        return RunDocker(p, ["logs", ..filtered]);
     }
 
-    private static int RunInspect(string[] args, bool json)
+    internal static int RunInspect(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe docker inspect <container>"); return 1; }
-        return RunDocker(["inspect", args[0]], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe docker inspect <container>"); return 1; }
+        return RunDocker(p, ["inspect", args[0]]);
     }
 
-    private static int RunComposePs(string[] args, bool json) => RunDockerCompose(["ps", ..args], json);
-    private static int RunComposeLogs(string[] args, bool json)
+    internal static int RunComposePs(Ports p, string[] args) => RunDockerCompose(p, ["ps", ..args]);
+
+    internal static int RunComposeLogs(Ports p, string[] args)
     {
         var filtered = Args.Without(args, "-f", "--follow");
-        return RunDockerCompose(["logs", ..filtered], json);
+        return RunDockerCompose(p, ["logs", ..filtered]);
     }
 
     // Safe writes
-    private static int RunBuild(string[] args, bool json) => RunDocker(["build", ..args, "."], json);
-
-    private static int RunComposeBuild(string[] args, bool json) => RunDockerCompose(["build", ..args], json);
-
-    private static int RunComposeUp(string[] args, bool json) => RunDockerCompose(["up", ..args], json);
-
-    private static int RunComposePull(string[] args, bool json) => RunDockerCompose(["pull", ..args], json);
-    private static int RunComposeRestart(string[] args, bool json) => RunDockerCompose(["restart", ..args], json);
+    internal static int RunBuild(Ports p, string[] args) => RunDocker(p, ["build", ..args, "."]);
+    internal static int RunComposeBuild(Ports p, string[] args) => RunDockerCompose(p, ["build", ..args]);
+    internal static int RunComposeUp(Ports p, string[] args) => RunDockerCompose(p, ["up", ..args]);
+    internal static int RunComposePull(Ports p, string[] args) => RunDockerCompose(p, ["pull", ..args]);
+    internal static int RunComposeRestart(Ports p, string[] args) => RunDockerCompose(p, ["restart", ..args]);
 
     // Targeted writes
-    private static int RunStop(string[] args, bool json)
+    internal static int RunStop(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe docker stop <container>"); return 1; }
-        return RunDocker(["stop", args[0]], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe docker stop <container>"); return 1; }
+        return RunDocker(p, ["stop", args[0]]);
     }
 
-    private static int RunStart(string[] args, bool json)
+    internal static int RunStart(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe docker start <container>"); return 1; }
-        return RunDocker(["start", args[0]], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe docker start <container>"); return 1; }
+        return RunDocker(p, ["start", args[0]]);
     }
 
-    private static int RunRestart(string[] args, bool json)
+    internal static int RunRestart(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe docker restart <container>"); return 1; }
-        return RunDocker(["restart", args[0]], json);
+        if (args.Length == 0) { p.Render.Error("Usage: safe docker restart <container>"); return 1; }
+        return RunDocker(p, ["restart", args[0]]);
     }
 
-    private static int RunComposeDown(string[] args, bool json) => RunDockerCompose(["down", ..args], json);
+    internal static int RunComposeDown(Ports p, string[] args) => RunDockerCompose(p, ["down", ..args]);
 }

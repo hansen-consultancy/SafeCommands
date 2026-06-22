@@ -9,14 +9,16 @@ using SafeCommands.Tests.Fakes;
 namespace SafeCommands.Tests;
 
 /// <summary>
-/// Pins the policies wired onto the six legacy-signature command groups (git, db, docker,
-/// process, npm, pnpm) after their inline validation was migrated to declared Policy chains.
+/// Pins the policies wired onto the command groups (git, db, docker, process, npm, pnpm)
+/// whose inline validation was migrated to declared Policy chains.
 ///
-/// SPAWN HAZARD: these handlers still call the static ProcessRunner.Run directly (not ports.Exec),
-/// so an ALLOWED/clean or REWRITE input pushed through CommandDispatcher.Execute would spawn a
-/// real git/docker/php/python/npm process. Therefore every allow/clean/rewrite case here asserts
-/// on the policy DIRECTLY (Find(...)!.Policy.Evaluate — pure, no spawn). Only blocked cases may go
-/// through the dispatcher, and only where the central render path is the thing under test.
+/// SPAWN HAZARD: git, db, and process handlers still call the static ProcessRunner.Run directly
+/// (not ports.Exec), so an ALLOWED/clean or REWRITE input pushed through CommandDispatcher.Execute
+/// would spawn a real git/php/python process. Therefore every allow/clean/rewrite case for those
+/// groups asserts on the policy DIRECTLY (Find(...)!.Policy.Evaluate — pure, no spawn). Only blocked
+/// cases may go through the dispatcher, and only where the central render path is the thing under test.
+/// (docker/npm/pnpm now route through ports.Exec, so a FakeExecutor absorbs their spawns — see the
+/// dispatch-level allow tests at the end, which were impossible before this migration.)
 /// </summary>
 public class MigratedCommandPolicyTests
 {
@@ -637,5 +639,49 @@ public class MigratedCommandPolicyTests
         Assert.True(doc.RootElement.GetProperty("blocked").GetBoolean());
         Assert.Equal("git push --force", doc.RootElement.GetProperty("command").GetString());
         Assert.Equal("Force push and delete are not allowed", doc.RootElement.GetProperty("reason").GetString());
+    }
+
+    // ============================================================ dispatch-level (allow path, post-migration)
+
+    // These prove the docker/npm migration onto ports.Exec: an ALLOWED input pushed through the
+    // dispatcher is absorbed by FakeExecutor rather than spawning a real process — the assertion the
+    // SPAWN HAZARD note says was impossible while these handlers called the static ProcessRunner.
+
+    [Fact]
+    public void Dispatch_DockerPs_Allowed_RoutesThroughExecutor_NoRealSpawn()
+    {
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("docker", "ps");
+        Assert.NotNull(cmd);
+        var exec = new FakeExecutor();
+        var render = new FakeRenderer();
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "docker", "ps", []);
+
+        Assert.Equal(0, rc);
+        Assert.Empty(render.Blocks);
+        var call = Assert.Single(exec.Calls);
+        Assert.Equal("docker", call.Tool);
+        Assert.Equal(new[] { "ps" }, call.Args);
+    }
+
+    [Fact]
+    public void Dispatch_NpmRunAllowedScript_RoutesThroughExecutor_NoRealSpawn()
+    {
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("npm", "run");
+        Assert.NotNull(cmd);
+        var exec = new FakeExecutor();
+        var render = new FakeRenderer();
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "npm", "run", ["build"]);
+
+        Assert.Equal(0, rc);
+        Assert.Empty(render.Blocks);
+        var call = Assert.Single(exec.Calls);
+        Assert.Equal("npm", call.Tool);
+        Assert.Equal(new[] { "run", "build" }, call.Args);
     }
 }
