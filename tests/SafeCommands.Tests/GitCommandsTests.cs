@@ -11,7 +11,7 @@ public class GitCommandsTests
     {
         var exec = new FakeExecutor();
         var render = new FakeRenderer { JsonMode = jsonMode };
-        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace()), exec, render);
+        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost()), exec, render);
     }
 
     private static JsonElement AsJson(object payload)

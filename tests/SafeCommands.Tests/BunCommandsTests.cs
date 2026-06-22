@@ -10,7 +10,7 @@ public class BunCommandsTests
     {
         var exec = new FakeExecutor();
         var render = new FakeRenderer { JsonMode = jsonMode };
-        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace()), exec, render);
+        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost()), exec, render);
     }
 
     // NOTE: the "blocked policy never spawns bun" assertion lives in DispatchTests now.

@@ -12,14 +12,14 @@ namespace SafeCommands.Tests;
 /// Pins the policies wired onto the command groups (git, db, docker, process, npm, pnpm)
 /// whose inline validation was migrated to declared Policy chains.
 ///
-/// SPAWN HAZARD: process handlers still drive raw System.Diagnostics.Process directly (not ports.Exec),
-/// so an ALLOWED/clean or REWRITE input pushed through CommandDispatcher.Execute would touch real
-/// processes. Therefore every allow/clean/rewrite case for that group asserts on the policy DIRECTLY
-/// (Find(...)!.Policy.Evaluate — pure, no spawn). Only blocked cases may go through the dispatcher, and
-/// only where the central render path is the thing under test. (docker/npm/pnpm/db/git/env now route
-/// through ports.Exec, and file's only spawns — the delete-tracked/move git probes — likewise route
-/// through ports.Exec, so a FakeExecutor absorbs them — see the dispatch-level allow tests at the end,
-/// which were impossible before this migration. process is now the LAST group still on raw Process.)
+/// SPAWN HAZARD (historical — now fully closed): all command groups route their side effects through
+/// ports. Tool spawns go through ports.Exec (a FakeExecutor absorbs them) and process enumeration/kill
+/// goes through ports.Processes (a FakeProcessHost absorbs them — process was the last group on raw
+/// System.Diagnostics.Process and is now migrated). So an ALLOWED input pushed through
+/// CommandDispatcher.Execute no longer touches a real tool or process — the dispatch-level allow tests
+/// at the end exercise exactly that, including process kill-name (the kill lands in the FakeProcessHost,
+/// never a real Process). Policy-direct assertions (Find(...)!.Policy.Evaluate) are still used where the
+/// pure verdict is the thing under test, but they are no longer forced by a spawn hazard.
 /// </summary>
 public class MigratedCommandPolicyTests
 {
@@ -609,7 +609,7 @@ public class MigratedCommandPolicyTests
         Assert.NotNull(cmd);
         var exec = new FakeExecutor();
         var render = new FakeRenderer();
-        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
 
         var rc = CommandDispatcher.Execute(cmd, ports, "git", "push", ["--force"]);
 
@@ -630,7 +630,7 @@ public class MigratedCommandPolicyTests
         var stderr = new StringWriter();
         var render = new ConsoleRenderer(jsonMode: true, stdout, stderr);
         var exec = new FakeExecutor();
-        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
 
         var rc = CommandDispatcher.Execute(cmd, ports, "git", "push", ["--force"]);
 
@@ -656,7 +656,7 @@ public class MigratedCommandPolicyTests
         Assert.NotNull(cmd);
         var exec = new FakeExecutor();
         var render = new FakeRenderer();
-        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
 
         var rc = CommandDispatcher.Execute(cmd, ports, "docker", "ps", []);
 
@@ -675,7 +675,7 @@ public class MigratedCommandPolicyTests
         Assert.NotNull(cmd);
         var exec = new FakeExecutor();
         var render = new FakeRenderer();
-        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
 
         var rc = CommandDispatcher.Execute(cmd, ports, "npm", "run", ["build"]);
 
@@ -694,7 +694,7 @@ public class MigratedCommandPolicyTests
         Assert.NotNull(cmd);
         var exec = new FakeExecutor();
         var render = new FakeRenderer();
-        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
 
         var rc = CommandDispatcher.Execute(cmd, ports, "db", "prisma-status", []);
 
@@ -715,7 +715,7 @@ public class MigratedCommandPolicyTests
         Assert.NotNull(cmd);
         var exec = new FakeExecutor();
         var render = new FakeRenderer();
-        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
 
         var rc = CommandDispatcher.Execute(cmd, ports, "db", "prisma-migrate-dev", ["--name", "x", "--force"]);
 
@@ -735,7 +735,7 @@ public class MigratedCommandPolicyTests
         Assert.NotNull(cmd);
         var exec = new FakeExecutor();
         var render = new FakeRenderer();
-        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
 
         var rc = CommandDispatcher.Execute(cmd, ports, "git", "status", []);
 
@@ -764,7 +764,7 @@ public class MigratedCommandPolicyTests
         {
             var exec = new FakeExecutor { NextResult = new ExecResult(1, "", "") }; // git ls-files -> not tracked
             var render = new FakeRenderer();
-            var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace { WithinPredicate = _ => true });
+            var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace { WithinPredicate = _ => true }, new FakeProcessHost());
 
             var rc = CommandDispatcher.Execute(cmd, ports, "file", "delete-tracked", [tmp]);
 
@@ -776,5 +776,49 @@ public class MigratedCommandPolicyTests
             Assert.True(File.Exists(tmp)); // never deleted
         }
         finally { File.Delete(tmp); }
+    }
+
+    [Fact]
+    public void Dispatch_ProcessKillName_AllowedName_RoutesKillThroughHost_NoRealProcess()
+    {
+        // Post-migration, process kill goes through ports.Processes. An allowlisted name ("node")
+        // passes the policy, reaches the handler, and the kill lands in a FakeProcessHost — the
+        // assertion the SPAWN HAZARD note said was impossible while process used raw Process.Kill.
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("process", "kill-name");
+        Assert.NotNull(cmd);
+        var exec = new FakeExecutor();
+        var render = new FakeRenderer();
+        var host = new FakeProcessHost();
+        host.Table.Add(new ProcessInfo(999, "node", 0));
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), host);
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "process", "kill-name", ["node"]);
+
+        Assert.Equal(0, rc);
+        Assert.Empty(render.Blocks);            // "node" is allowlisted
+        Assert.Contains(999, host.KillCalls);   // killed through the host, never a real Process
+        Assert.Empty(exec.Calls);               // kill-name spawns no external tool
+    }
+
+    [Fact]
+    public void Dispatch_ProcessKillName_DisallowedName_Blocked_NeverTouchesHost()
+    {
+        // E2: a non-allowlisted name is blocked at the dispatch seam before the handler runs, so the
+        // process host is never invoked — the kill can't reach even a faked process table.
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("process", "kill-name");
+        Assert.NotNull(cmd);
+        var exec = new FakeExecutor();
+        var render = new FakeRenderer();
+        var host = new FakeProcessHost();
+        host.Table.Add(new ProcessInfo(1, "rm", 0));
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), host);
+
+        var rc = CommandDispatcher.Execute(cmd, ports, "process", "kill-name", ["rm"]);
+
+        Assert.Equal(1, rc);
+        Assert.Single(render.Blocks);
+        Assert.Empty(host.KillCalls);           // blocked before the handler -> host untouched
     }
 }

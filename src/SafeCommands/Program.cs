@@ -38,7 +38,7 @@ else
 
 // Wire infrastructure ports once. From here every handler receives the same Ports record.
 var exec = new ProcessExecutor();
-var ports = new Ports(exec, new ConsoleRenderer(jsonOutput), new GitRepoProbe(exec), new FileSystemWorkspace());
+var ports = new Ports(exec, new ConsoleRenderer(jsonOutput), new GitRepoProbe(exec), new FileSystemWorkspace(), new ProcessHost());
 
 // Handle meta commands (still on legacy signature — not migrated in PR #1)
 var first = cliArgs[0].ToLowerInvariant();

@@ -19,7 +19,7 @@ public class DispatchTests
     {
         var exec = new FakeExecutor();
         var render = new FakeRenderer();
-        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace()), exec, render);
+        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost()), exec, render);
     }
 
     private static CommandDefinition Cmd(Policy policy, Func<Ports, string[], int> handler)
@@ -122,7 +122,7 @@ public class DispatchTests
         var stderr = new StringWriter();
         var render = new ConsoleRenderer(jsonMode: true, stdout, stderr);
         var exec = new FakeExecutor();
-        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
         var cmd = Cmd(Policy.Default.BlockFlags(["--force"], "no force", "drop it"), Spawn);
 
         var rc = CommandDispatcher.Execute(cmd, ports, "grp", "cmd", ["--force"]);
@@ -216,7 +216,7 @@ public class DispatchTests
         var stderr = new StringWriter();
         var render = new ConsoleRenderer(jsonMode: true, stdout, stderr);
         var exec = new FakeExecutor();
-        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
 
         var rc = CommandDispatcher.Execute(cmd, ports, "proxy", "gh", ["api", "-X", "POST"]);
 
@@ -240,7 +240,7 @@ public class DispatchTests
         var render = new ConsoleRenderer(jsonMode: true, stdout, stderr);
         var exec = new FakeExecutor();
         var ws = new FakeWorkspace { ProjectRoot = "/proj", WithinPredicate = _ => false };
-        var ports = new Ports(exec, render, new FakeRepoProbe(), ws);
+        var ports = new Ports(exec, render, new FakeRepoProbe(), ws, new FakeProcessHost());
 
         var rc = CommandDispatcher.Execute(cmd, ports, "file", "read", ["/etc/passwd"]);
 

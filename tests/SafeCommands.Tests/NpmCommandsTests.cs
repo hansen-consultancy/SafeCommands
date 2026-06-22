@@ -12,7 +12,7 @@ public class NpmCommandsTests
     {
         var exec = new FakeExecutor();
         var render = new FakeRenderer { JsonMode = jsonMode };
-        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace()), exec, render);
+        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost()), exec, render);
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class NpmCommandsTests
         var stderr = new StringWriter();
         var render = new ConsoleRenderer(jsonMode: true, stdout, stderr);
         var exec = new FakeExecutor();
-        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace());
+        var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
 
         NpmCommands.RunInstall(ports, []);
 
