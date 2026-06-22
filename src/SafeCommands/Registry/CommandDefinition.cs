@@ -37,22 +37,6 @@ record CommandDefinition(
 )
 {
     /// <summary>
-    /// Migration shim: auto-adapts legacy handlers with the
-    /// <c>(string[] args, bool jsonMode) =&gt; int</c> signature so unmigrated command
-    /// groups need no source changes during the staged refactor (Issue #2).
-    /// </summary>
-    public CommandDefinition(
-        string group,
-        string name,
-        string description,
-        string usage,
-        SafetyLevel safety,
-        Func<string[], bool, int> legacyHandler)
-        : this(group, name, description, usage, safety,
-               (p, args) => legacyHandler(args, p.Render.JsonMode))
-    { }
-
-    /// <summary>
     /// Safety contract evaluated at the dispatch site before the handler runs. Defaults to
     /// <see cref="Policy.Default"/> (no checks); commands set it via object-initializer syntax.
     /// </summary>
