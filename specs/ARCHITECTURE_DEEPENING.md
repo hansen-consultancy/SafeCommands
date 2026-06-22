@@ -241,8 +241,14 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 >   add`/`git commit`'s richer messages. The `generate` group and `proxy run` are deferred — their input
 >   guards are positional-extraction (`IsNullOrEmpty(Positionals(...))`) / subsystem-specific, not the
 >   uniform `args.Length` boilerplate this targets.
-> - **Extract `Program.cs`'s outer shell** (routing, `--json` strip + proxy arg-splice, `--help`, global
->   try/catch) into a table-testable `Dispatch(Ports,string[])`.
+> - **Extract `Program.cs`'s outer shell.** ✅ **Slice 9 (this PR):** the top-level statements moved into
+>   a table-testable static `Cli` — `StripJson(string[])` (the proxy-aware `--json` splice, pure) and
+>   `Route(Ports, string[], bool)` (meta switch, group/command lookup + friendly unknown-X errors,
+>   bare-group help, per-command `--help`, guarded dispatch). `Program.cs` is now an 11-line shell
+>   (`Initialize → StripJson → build ports → Route`). Behavior-preserving, with one incidental fix: `safe
+>   --json` (only the flag) used to throw `IndexOutOfRange` (the length check ran before the `--json`
+>   strip, outside the try/catch) and now returns help cleanly. +25 tests pinning the splice + every
+>   routing branch.
 
 **Cluster:** `CommandDefinition`'s legacy shim (`:43-52`) + the **two live output stacks**
 (static `OutputFormatter`, ~28 `WriteBlocked` sites across 13 files, vs. `ConsoleRenderer`,
