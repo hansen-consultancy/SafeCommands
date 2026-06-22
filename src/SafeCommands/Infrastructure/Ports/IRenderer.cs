@@ -30,6 +30,14 @@ interface IRenderer
     /// <summary>Informational message. Suppressed under JsonMode to avoid corrupting JSON output.</summary>
     void Info(string message);
 
+    /// <summary>
+    /// Verbatim stdout write — no added newline, no markup, no escaping. The faithful primitive
+    /// for commands whose contract is byte-exact content passthrough (e.g. <c>file read</c> in
+    /// human mode). Unlike <see cref="Info"/> it adds nothing and is NOT suppressed under JsonMode,
+    /// so callers that have a JSON shape must branch on <see cref="JsonMode"/> and not call Raw there.
+    /// </summary>
+    void Raw(string text);
+
     /// <summary>Warning. Suppressed under JsonMode to avoid corrupting JSON output.</summary>
     void Warning(string message);
 

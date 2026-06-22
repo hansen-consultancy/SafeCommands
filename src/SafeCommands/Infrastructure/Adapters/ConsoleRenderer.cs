@@ -71,6 +71,8 @@ sealed class ConsoleRenderer : IRenderer
         _stdout.WriteLine(message);
     }
 
+    public void Raw(string text) => _stdout.Write(text);
+
     public void Warning(string message)
     {
         if (JsonMode) return;
