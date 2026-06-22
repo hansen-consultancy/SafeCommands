@@ -199,11 +199,38 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 > consistency, with path validation unchanged — no new threat and no mitigation weakened (consistent with
 > slices 1–4).
 >
-> **Remaining:** one group left. **`process`** — raw `System.Diagnostics.Process` kill/enumerate has
-> **no `IExecutor` seam yet**; it needs a process-host port, not a mechanical pass. Once it lands, the
-> legacy shim ctor, `IRenderer.JsonMode`, and most of `OutputFormatter` can be deleted. Two independent
-> items also remain: consolidate the 54 inline `"Usage:"` guards into a declarative arg-spec at dispatch,
-> and extract `Program.cs`'s outer shell into a table-testable `Dispatch(Ports,string[])`.
+> **Slice 6 shipped (this PR — group migration COMPLETE):** **`process`** migrated, the last group on
+> the legacy shim. Its tool spawns (`netstat`/`ss`/`lsof`, plus the `ss`-availability probe formerly via
+> `ProcessRunner.CommandExists`) now route through `IExecutor`; its raw process control
+> (`Process.GetProcesses`/`GetProcessesByName`/`GetProcessById`/`Kill`) moved behind a NEW **`IProcessHost`**
+> port (`List`/`FindByName`/`Kill`, returning `ProcessInfo`/`KillOutcome` value types) with a `ProcessHost`
+> adapter that consolidates the per-process "exited mid-enumeration" races in one place. **Closes process's
+> SPAWN HAZARD** — a `FakeProcessHost` absorbs enumeration and kills, so an allowed `kill-name` is testable
+> at the dispatch boundary without touching a real process (new dispatch allow/block pair proving STRIDE
+> **E2**: an allowlisted name routes to the host; a disallowed name is blocked *before* it). The kill-name
+> dev-tools allowlist policy in `Register()` is byte-identical. `IProcessHost` was added as the 5th `Ports`
+> member (Program.cs + ~26 test sites updated). +26 tests incl. real-adapter `ProcessHostTests`. Adversarial
+> review (5 dimensions, 17 agents): 0 shipping-logic/safety/policy regressions; 5 findings (1 test-quality
+> should-fix + 4 nits) all addressed. Two small documented behavior changes, both consistent with prior
+> slices: the `ss`-availability probe dropped `CommandExists`'s try/catch (a missing `which` on a Unix host —
+> effectively impossible — now surfaces rather than silently falling back to `lsof`; identical to env slice
+> 3's `RunCheck`), and the `kill-port`/`kill-name` "nothing matched" paths now emit a valid empty JSON object
+> under `--json` (`{port,killed:[]}` / `{killed:[],count:0}`) instead of the original's bare non-JSON line.
+> STRIDE reviewed: no entry needed (E2's kill allowlist, enforced at dispatch, is unchanged — this is an
+> execution-seam introduction, consistent with slices 1–5). **Shim count 1 → 0.**
+>
+> **Remaining:** the group migration is **done — all 12 registry groups are on `(Ports,string[])` and the
+> legacy handler shim has zero registry users.** What's left is cleanup plus two independent items, each its
+> own future slice:
+> - **Retire the shim plumbing.** The `CommandDefinition` legacy-handler ctor is now dead (the only remaining
+>   `(string[],bool)` handlers are in `MetaCommands`, dispatched directly from `Program.cs` *outside* the
+>   registry) and can be deleted. `OutputFormatter` can only be *reduced* for now — `MetaCommands` still uses
+>   it and `ConsoleRenderer` depends on its `JsonOptions` — so full deletion waits on migrating `meta`.
+>   `IRenderer.JsonMode` is still load-bearing (every dual-mode handler branches on it); removing it needs the
+>   deeper "renderer owns both renderings from a typed payload" redesign, not a mechanical pass.
+> - **Consolidate the 54 inline `"Usage:"` guards** into a declarative arg-spec at dispatch.
+> - **Extract `Program.cs`'s outer shell** (routing, `--json` strip + proxy arg-splice, `--help`, global
+>   try/catch) into a table-testable `Dispatch(Ports,string[])`.
 
 **Cluster:** `CommandDefinition`'s legacy shim (`:43-52`) + the **two live output stacks**
 (static `OutputFormatter`, ~28 `WriteBlocked` sites across 13 files, vs. `ConsoleRenderer`,

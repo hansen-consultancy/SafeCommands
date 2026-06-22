@@ -16,7 +16,7 @@ public class GenerateCommandsTests
     private static (Ports ports, FakeRenderer render) Setup(bool jsonMode = false)
     {
         var render = new FakeRenderer { JsonMode = jsonMode };
-        return (new Ports(new FakeExecutor(), render, new FakeRepoProbe(), new FakeWorkspace()), render);
+        return (new Ports(new FakeExecutor(), render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost()), render);
     }
 
     // ───────────────────────────────────────────── dual-mode rendering contract
@@ -27,7 +27,7 @@ public class GenerateCommandsTests
     {
         var stdout = new StringWriter();
         var render = new ConsoleRenderer(jsonMode, stdout, new StringWriter());
-        run(new Ports(new FakeExecutor(), render, new FakeRepoProbe(), new FakeWorkspace()));
+        run(new Ports(new FakeExecutor(), render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost()));
         return stdout.ToString();
     }
 

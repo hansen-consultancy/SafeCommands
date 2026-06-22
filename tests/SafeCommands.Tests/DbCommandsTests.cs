@@ -10,7 +10,7 @@ public class DbCommandsTests
     {
         var exec = new FakeExecutor();
         var render = new FakeRenderer();
-        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace()), exec, render);
+        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost()), exec, render);
     }
 
     // === Prisma (npx-fronted) ===

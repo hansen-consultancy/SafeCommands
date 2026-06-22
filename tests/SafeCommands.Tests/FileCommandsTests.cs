@@ -44,7 +44,7 @@ public sealed class FileCommandsTests : IDisposable
     {
         var exec = new FakeExecutor();
         var render = new FakeRenderer { JsonMode = jsonMode };
-        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace()), exec, render);
+        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost()), exec, render);
     }
 
     private static JsonElement AsJson(object payload)
@@ -324,7 +324,7 @@ public sealed class FileCommandsTests : IDisposable
         var stdout = new StringWriter();
         var stderr = new StringWriter();
         var render = new ConsoleRenderer(jsonMode: true, stdout, stderr);
-        var ports = new Ports(new FakeExecutor(), render, new FakeRepoProbe(), new FakeWorkspace());
+        var ports = new Ports(new FakeExecutor(), render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
         var src = Write("js.txt", "x");
         var dest = Write("jd.txt", "y");
 

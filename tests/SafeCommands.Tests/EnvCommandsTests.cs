@@ -12,7 +12,7 @@ public class EnvCommandsTests
     {
         var exec = new FakeExecutor();
         var render = new FakeRenderer { JsonMode = jsonMode };
-        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace()), exec, render);
+        return (new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost()), exec, render);
     }
 
     // The handler picks "where" on Windows, "which" elsewhere — mirror that so the assertion is cross-platform.
@@ -238,7 +238,7 @@ public class EnvCommandsTests
     }
 
     private static Ports ThrowingPorts()
-        => new(new ThrowingExecutor(), new FakeRenderer(), new FakeRepoProbe(), new FakeWorkspace());
+        => new(new ThrowingExecutor(), new FakeRenderer(), new FakeRepoProbe(), new FakeWorkspace(), new FakeProcessHost());
 
     [Fact]
     public void RunCheck_WhenProbeThrows_Propagates_DoesNotSwallowToNotFound()

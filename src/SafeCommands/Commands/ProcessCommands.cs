@@ -1,7 +1,5 @@
-using System.Diagnostics;
-using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
 using SafeCommands.Safety;
 using SafeCommands.Sugar;
@@ -35,105 +33,81 @@ static class ProcessCommands
         ]);
     }
 
-    private static int RunList(string[] args, bool json)
+    internal static int RunList(Ports p, string[] args)
     {
         var filter = Args.Value(args, "--filter") ?? "";
 
-        var processes = Process.GetProcesses()
-            .Where(p =>
-            {
-                try { return string.IsNullOrEmpty(filter) || p.ProcessName.Contains(filter, StringComparison.OrdinalIgnoreCase); }
-                catch { return false; }
-            })
-            .Select(p =>
-            {
-                try { return new { pid = p.Id, name = p.ProcessName, memory = p.WorkingSet64 }; }
-                catch { return new { pid = p.Id, name = p.ProcessName, memory = 0L }; }
-            })
-            .OrderBy(p => p.name)
+        var processes = p.Processes.List()
+            .Where(pi => string.IsNullOrEmpty(filter) || pi.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            .Select(pi => new { pid = pi.Pid, name = pi.Name, memory = pi.Memory })
+            .OrderBy(pi => pi.name)
             .Take(100)
             .ToArray();
 
-        if (json)
-            OutputFormatter.WriteJson(new { count = processes.Length, processes });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { count = processes.Length, processes });
         else
-        {
-            foreach (var p in processes)
-                Console.WriteLine($"{p.pid,8}  {p.name,-30}  {p.memory / 1024 / 1024,6} MB");
-        }
+            foreach (var pi in processes)
+                p.Render.Info($"{pi.pid,8}  {pi.name,-30}  {pi.memory / 1024 / 1024,6} MB");
         return 0;
     }
 
-    private static int RunFind(string[] args, bool json)
+    internal static int RunFind(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe process find <name>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe process find <name>"); return 1; }
         var name = args[0];
 
-        var processes = Process.GetProcessesByName(name)
-            .Select(p =>
-            {
-                try { return new { pid = p.Id, name = p.ProcessName, memory = p.WorkingSet64 }; }
-                catch { return new { pid = p.Id, name = p.ProcessName, memory = 0L }; }
-            })
+        var processes = p.Processes.FindByName(name)
+            .Select(pi => new { pid = pi.Pid, name = pi.Name, memory = pi.Memory })
             .ToArray();
 
-        if (json)
-            OutputFormatter.WriteJson(new { count = processes.Length, processes });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { count = processes.Length, processes });
         else if (processes.Length == 0)
-            Console.WriteLine($"No processes found matching '{name}'");
+            p.Render.Info($"No processes found matching '{name}'");
         else
-            foreach (var p in processes)
-                Console.WriteLine($"{p.pid,8}  {p.name,-30}  {p.memory / 1024 / 1024,6} MB");
+            foreach (var pi in processes)
+                p.Render.Info($"{pi.pid,8}  {pi.name,-30}  {pi.memory / 1024 / 1024,6} MB");
 
         return 0;
     }
 
-    private static int RunPorts(string[] args, bool json)
+    internal static int RunPorts(Ports p, string[] args)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            var (code, output, error) = ProcessRunner.Run("netstat", ["-ano", "-p", "TCP"]);
-            if (json)
-                OutputFormatter.WriteJson(new { output });
-            else
-                OutputFormatter.WritePassthrough(output);
-            return code;
-        }
-        else
-        {
-            // Try ss first, then lsof
-            if (ProcessRunner.CommandExists("ss"))
-            {
-                var (code, output, _) = ProcessRunner.Run("ss", ["-tlnp"]);
-                if (json) OutputFormatter.WriteJson(new { output });
-                else OutputFormatter.WritePassthrough(output);
-                return code;
-            }
-            else
-            {
-                var (code, output, _) = ProcessRunner.Run("lsof", ["-i", "-P", "-n"]);
-                if (json) OutputFormatter.WriteJson(new { output });
-                else OutputFormatter.WritePassthrough(output);
-                return code;
-            }
-        }
+            return EmitPorts(p, p.Exec.Run("netstat", ["-ano", "-p", "TCP"]));
+
+        // Unix: prefer ss, fall back to lsof.
+        var useSs = p.Exec.Run("which", ["ss"]).ExitCode == 0;
+        return useSs
+            ? EmitPorts(p, p.Exec.Run("ss", ["-tlnp"]))
+            : EmitPorts(p, p.Exec.Run("lsof", ["-i", "-P", "-n"]));
     }
 
-    private static int RunKillPort(string[] args, bool json)
+    private static int EmitPorts(Ports p, ExecResult r)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe process kill-port <port>"); return 1; }
+        if (p.Render.JsonMode)
+            p.Render.Json(new { output = r.StdOut });
+        else if (!string.IsNullOrEmpty(r.StdOut))
+            p.Render.Info(r.StdOut);
+        return r.ExitCode;
+    }
+
+    internal static int RunKillPort(Ports p, string[] args)
+    {
+        if (args.Length == 0) { p.Render.Error("Usage: safe process kill-port <port>"); return 1; }
         if (!int.TryParse(args[0], out var port) || port < 1 || port > 65535)
         {
-            OutputFormatter.WriteError("Invalid port number");
+            p.Render.Error("Invalid port number");
             return 1;
         }
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            var (code, output, _) = ProcessRunner.Run("netstat", ["-ano", "-p", "TCP"]);
-            if (code != 0) { OutputFormatter.WriteError("Failed to query ports"); return 1; }
+            var r = p.Exec.Run("netstat", ["-ano", "-p", "TCP"]);
+            if (r.ExitCode != 0) { p.Render.Error("Failed to query ports"); return 1; }
 
-            var pids = output.Split('\n')
+            var pids = r.StdOut.Split('\n')
                 .Where(l => l.Contains($":{port} ") || l.Contains($":{port}\t"))
                 .Where(l => l.Contains("LISTENING"))
                 .Select(l => l.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Last())
@@ -142,7 +116,8 @@ static class ProcessCommands
 
             if (pids.Length == 0)
             {
-                Console.WriteLine($"No process listening on port {port}");
+                if (p.Render.JsonMode) p.Render.Json(new { port, killed = Array.Empty<object>() });
+                else p.Render.Info($"No process listening on port {port}");
                 return 0;
             }
 
@@ -151,51 +126,43 @@ static class ProcessCommands
             {
                 if (int.TryParse(pidStr, out var pid))
                 {
-                    try
-                    {
-                        var proc = Process.GetProcessById(pid);
-                        var name = proc.ProcessName;
-                        proc.Kill();
-                        killed.Add(new { pid, name });
-                    }
-                    catch (Exception ex)
-                    {
-                        OutputFormatter.WriteWarning($"Could not kill PID {pid}: {ex.Message}");
-                    }
+                    var outcome = p.Processes.Kill(pid);
+                    if (outcome.Killed)
+                        killed.Add(new { pid, name = outcome.Name });
+                    else
+                        p.Render.Warning($"Could not kill PID {pid}: {outcome.Error}");
                 }
             }
 
-            if (json)
-                OutputFormatter.WriteJson(new { port, killed });
+            if (p.Render.JsonMode)
+                p.Render.Json(new { port, killed });
             else
                 foreach (var k in killed)
-                    OutputFormatter.WriteSuccess($"Killed process on port {port}: {k}");
+                    p.Render.Info($"Killed process on port {port}: {k}");
         }
         else
         {
-            // Unix: use lsof or fuser
-            var (code, output, _) = ProcessRunner.Run("lsof", ["-t", $"-i:{port}"]);
-            if (code != 0 || string.IsNullOrWhiteSpace(output))
+            // Unix: lsof -t lists the pids holding the port.
+            var r = p.Exec.Run("lsof", ["-t", $"-i:{port}"]);
+            if (r.ExitCode != 0 || string.IsNullOrWhiteSpace(r.StdOut))
             {
-                Console.WriteLine($"No process listening on port {port}");
+                if (p.Render.JsonMode) p.Render.Json(new { port, killed = Array.Empty<object>() });
+                else p.Render.Info($"No process listening on port {port}");
                 return 0;
             }
 
-            foreach (var pidStr in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            foreach (var pidStr in r.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
                 if (int.TryParse(pidStr.Trim(), out var pid))
                 {
-                    try
+                    var outcome = p.Processes.Kill(pid);
+                    if (outcome.Killed)
                     {
-                        var proc = Process.GetProcessById(pid);
-                        proc.Kill();
-                        if (json) OutputFormatter.WriteJson(new { killed = true, pid, port });
-                        else OutputFormatter.WriteSuccess($"Killed PID {pid} on port {port}");
+                        if (p.Render.JsonMode) p.Render.Json(new { killed = true, pid, port });
+                        else p.Render.Info($"Killed PID {pid} on port {port}");
                     }
-                    catch (Exception ex)
-                    {
-                        OutputFormatter.WriteWarning($"Could not kill PID {pid}: {ex.Message}");
-                    }
+                    else
+                        p.Render.Warning($"Could not kill PID {pid}: {outcome.Error}");
                 }
             }
         }
@@ -203,37 +170,33 @@ static class ProcessCommands
         return 0;
     }
 
-    private static int RunKillName(string[] args, bool json)
+    internal static int RunKillName(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe process kill-name <name>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe process kill-name <name>"); return 1; }
         var name = args[0].ToLowerInvariant();
 
-        var processes = Process.GetProcessesByName(args[0]);
-        if (processes.Length == 0)
+        var processes = p.Processes.FindByName(args[0]);
+        if (processes.Count == 0)
         {
-            Console.WriteLine($"No processes found matching '{name}'");
+            if (p.Render.JsonMode) p.Render.Json(new { killed = Array.Empty<object>(), count = 0 });
+            else p.Render.Info($"No processes found matching '{name}'");
             return 0;
         }
 
         var killed = new List<object>();
         foreach (var proc in processes)
         {
-            try
-            {
-                var pid = proc.Id;
-                proc.Kill();
-                killed.Add(new { pid, name = proc.ProcessName });
-            }
-            catch (Exception ex)
-            {
-                OutputFormatter.WriteWarning($"Could not kill {proc.ProcessName} (PID {proc.Id}): {ex.Message}");
-            }
+            var outcome = p.Processes.Kill(proc.Pid);
+            if (outcome.Killed)
+                killed.Add(new { pid = proc.Pid, name = proc.Name });
+            else
+                p.Render.Warning($"Could not kill {proc.Name} (PID {proc.Pid}): {outcome.Error}");
         }
 
-        if (json)
-            OutputFormatter.WriteJson(new { killed, count = killed.Count });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { killed, count = killed.Count });
         else
-            OutputFormatter.WriteSuccess($"Killed {killed.Count} '{name}' processes");
+            p.Render.Info($"Killed {killed.Count} '{name}' processes");
 
         return 0;
     }
