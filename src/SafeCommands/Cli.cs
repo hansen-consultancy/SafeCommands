@@ -41,17 +41,17 @@ static class Cli
     public static int Route(Ports ports, string[] cliArgs, bool jsonOutput)
     {
         if (cliArgs.Length == 0)
-            return MetaCommands.RunHelp([], jsonOutput);
+            return MetaCommands.RunHelp(ports, []);
 
         var first = cliArgs[0].ToLowerInvariant();
         switch (first)
         {
             case "help" or "-h" or "--help" or "h":
-                return MetaCommands.RunHelp(cliArgs.Skip(1).ToArray(), jsonOutput);
+                return MetaCommands.RunHelp(ports, cliArgs.Skip(1).ToArray());
             case "version" or "-v" or "--version":
-                return MetaCommands.RunVersion([], jsonOutput);
+                return MetaCommands.RunVersion(ports, []);
             case "instructions" or "setup":
-                return MetaCommands.RunInstructions(cliArgs.Skip(1).ToArray(), jsonOutput);
+                return MetaCommands.RunInstructions(ports, cliArgs.Skip(1).ToArray());
         }
 
         // safe <group> <command> [args...]
@@ -59,7 +59,7 @@ static class Cli
         {
             // A bare group name shows that group's help.
             if (CommandRegistry.FindByGroup(first).Any())
-                return MetaCommands.RunHelp([first], jsonOutput);
+                return MetaCommands.RunHelp(ports, [first]);
 
             ports.Render.Error($"Unknown command: {first}");
             ports.Render.Info("Run 'safe help' for available commands.");

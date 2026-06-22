@@ -226,10 +226,13 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 >   (`Func<string[],bool,int>` → `(Ports,string[])` adapter) is **deleted** — the registry no longer carries
 >   the two-world handler shape; its removal compiles clean and the full suite passes, which proves it had
 >   zero callers (the only `(string[],bool)` handlers left are in `MetaCommands`, dispatched directly from
->   `Program.cs` *outside* the registry). Still pending: `OutputFormatter` can only be *reduced* (it's used by
->   `MetaCommands`, and `ConsoleRenderer` depends on its `JsonOptions`), so full deletion waits on migrating
->   `meta`; and `IRenderer.JsonMode` remains load-bearing (every dual-mode handler branches on it) — removing
->   it needs the deeper "renderer owns both renderings from a typed payload" redesign, not a mechanical pass.
+>   `Program.cs` *outside* the registry). ✅ **Slice 10:** `meta` (help/version/instructions) migrated onto
+>   `(Ports,string[])` + `IRenderer` — its JSON/error/success now route through `Render` (the rich Spectre
+>   Figlet/Table human help stays direct, since `IRenderer` doesn't model tables) — and **`OutputFormatter`
+>   is deleted**, its lone surviving member `JsonOptions` relocated into `ConsoleRenderer` (its only
+>   consumer). Still pending: `IRenderer.JsonMode` remains load-bearing (every dual-mode handler branches on
+>   it) — removing it needs the deeper "renderer owns both renderings from a typed payload" redesign, not a
+>   mechanical pass.
 > - **Consolidate the inline `"Usage:"` guards.** ✅ **Slice 8 (this PR):** added
 >   `CommandDefinition.MinArgs`, enforced once at the dispatch seam (after policy, before the handler)
 >   emitting `Usage: {Usage}`. **37 commands** (git/docker/env/db/process/file/dotnet/bun + npm `view`/pnpm
