@@ -230,9 +230,8 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 >   `(Ports,string[])` + `IRenderer` — its JSON/error/success now route through `Render` (the rich Spectre
 >   Figlet/Table human help stays direct, since `IRenderer` doesn't model tables) — and **`OutputFormatter`
 >   is deleted**, its lone surviving member `JsonOptions` relocated into `ConsoleRenderer` (its only
->   consumer). Still pending: `IRenderer.JsonMode` remains load-bearing (every dual-mode handler branches on
->   it) — removing it needs the deeper "renderer owns both renderings from a typed payload" redesign, not a
->   mechanical pass.
+>   consumer). `IRenderer.JsonMode` is **kept by decision** — see the outcome note below; it is a legitimate
+>   mode signal (npm `--json` arg-selection, git porcelain-vs-passthrough), not merely a leak.
 > - **Consolidate the inline `"Usage:"` guards.** ✅ **Slice 8 (this PR):** added
 >   `CommandDefinition.MinArgs`, enforced once at the dispatch seam (after policy, before the handler)
 >   emitting `Usage: {Usage}`. **37 commands** (git/docker/env/db/process/file/dotnet/bun + npm `view`/pnpm
@@ -252,6 +251,26 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 >   --json` (only the flag) used to throw `IndexOutOfRange` (the length check ran before the `--json`
 >   strip, outside the try/catch) and now returns help cleanly. +25 tests pinning the splice + every
 >   routing branch.
+>
+> **Candidate 3 — outcome (closed 2026-06-22).** Slices 1–10 (PRs #15→#24) delivered the substance: all 12
+> registry groups **+ `meta`** are on `(Ports,string[])`; the legacy handler-shim ctor and the entire
+> `OutputFormatter` class are **deleted**; the `--json` blocked-envelope fork is gone; the ~37 inline
+> `"Usage:"` count-guards are a declarative `MinArgs` enforced at dispatch; `Program.cs` is a thin,
+> table-tested `Cli` shell; and two new ports landed (`IProcessHost`, `IRenderer.Raw`). Test count ~225 → 582.
+>
+> **Two items are deliberately NOT done — a design call, not a backlog gap:**
+> - **`IRenderer.JsonMode` stays.** It is not merely a rendering leak: for `npm outdated/list/audit/view` it
+>   selects the *args passed to npm* (`--json`), and for `git status`/`branch` it picks the *execution
+>   strategy* (a `--porcelain`/`--no-color` probe + parse vs. a plain passthrough). Removing it would force a
+>   behavior change (e.g. `git status`'s human output would stop being native git) or a god-object renderer
+>   that must know every command's heterogeneous human form — Spectre tables, recursive trees, fixed-width
+>   columns, raw content — several of which (e.g. `Raw`) are intentionally *not* suppressed under `--json`.
+>   The "typed payload, renderer owns both renderings" sketch below doesn't survive the control-flow cases,
+>   so `JsonMode` is kept as a legitimate mode signal rather than half-removed at the cost of 29 closures.
+> - **`generate`/`proxy` usage guards stay inline.** `generate`'s guards test positional *presence*
+>   (`IsNullOrEmpty(Positionals(...))`), which the total-token `MinArgs` can't express, and `proxy run` is the
+>   subsystem re-dispatcher — neither is the uniform `args.Length` boilerplate `MinArgs` targets. Converting
+>   them would add a second arg-spec knob for a handful of sites; not worth the surface area.
 
 **Cluster:** `CommandDefinition`'s legacy shim (`:43-52`) + the **two live output stacks**
 (static `OutputFormatter`, ~28 `WriteBlocked` sites across 13 files, vs. `ConsoleRenderer`,
