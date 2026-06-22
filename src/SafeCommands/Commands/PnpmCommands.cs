@@ -14,7 +14,7 @@ static class PnpmCommands
             new("pnpm", "outdated", "Check outdated dependencies", "safe pnpm outdated", SafetyLevel.ReadOnly, RunOutdated),
             new("pnpm", "list", "List installed packages", "safe pnpm list [--depth <n>]", SafetyLevel.ReadOnly, RunList),
             new("pnpm", "audit", "Run security audit", "safe pnpm audit", SafetyLevel.ReadOnly, RunAudit),
-            new("pnpm", "why", "Show why a package is installed", "safe pnpm why <package>", SafetyLevel.ReadOnly, RunWhy),
+            new("pnpm", "why", "Show why a package is installed", "safe pnpm why <package>", SafetyLevel.ReadOnly, RunWhy) { MinArgs = 1 },
 
             // Safe writes - pnpm doesn't run lifecycle scripts by default (safer than npm)
             new("pnpm", "install", "Install dependencies (lifecycle scripts disabled by default)", "safe pnpm install", SafetyLevel.SafeWrite, RunInstall),
@@ -32,10 +32,7 @@ static class PnpmCommands
     internal static int RunAudit(Ports p, string[] args)    => Run.Tool(p, "pnpm", ["audit", ..args]);
 
     internal static int RunWhy(Ports p, string[] args)
-    {
-        if (args.Length == 0) { p.Render.Error("Usage: safe pnpm why <package>"); return 1; }
-        return Run.Tool(p, "pnpm", ["why", ..args]);
-    }
+        => Run.Tool(p, "pnpm", ["why", ..args]);
 
     internal static int RunInstall(Ports p, string[] args) => Run.Tool(p, "pnpm", ["install", ..args]);
 

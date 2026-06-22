@@ -51,39 +51,12 @@ public sealed class FileCommandsTests : IDisposable
         => JsonDocument.Parse(JsonSerializer.Serialize(payload)).RootElement;
 
     // === Usage guards (no FS mutation, no spawn) ===
-
-    [Theory]
-    [InlineData("read")]
-    [InlineData("exists")]
-    [InlineData("info")]
-    [InlineData("count")]
-    [InlineData("find")]
-    [InlineData("mkdir")]
-    [InlineData("write")]
-    [InlineData("delete-tracked")]
-    [InlineData("delete-pattern")]
-    [InlineData("copy")]
-    [InlineData("move")]
-    public void NoArgs_EmitsUsageError_NoSpawn(string cmd)
-    {
-        var (ports, exec, render) = Setup();
-        var handler = Handler(cmd);
-        Assert.Equal(1, handler(ports, []));
-        Assert.Single(render.Errors);
-        Assert.Empty(exec.Calls);
-        Assert.Empty(render.Blocks);
-    }
-
-    [Theory]
-    [InlineData("copy")]
-    [InlineData("move")]
-    public void TwoPathCommands_OneArg_EmitsUsageError(string cmd)
-    {
-        var (ports, exec, render) = Setup();
-        Assert.Equal(1, Handler(cmd)(ports, ["only-one"]));
-        Assert.Single(render.Errors);
-        Assert.Empty(exec.Calls);
-    }
+    //
+    // Positional-COUNT guards for read/exists/info/count/find/mkdir/write/delete-tracked/
+    // delete-pattern/copy/move are now declarative MinArgs, enforced at the dispatch seam
+    // (covered by DispatchTests). The handlers below assume args.Length >= MinArgs, so the
+    // direct-handler no-arg theory that used to live here no longer applies. The required-FLAG
+    // contracts (write's --content, delete-pattern's --in) stayed inline and are pinned below.
 
     [Fact]
     public void RunDeletePattern_NoInFlag_EmitsError()
@@ -471,22 +444,4 @@ public sealed class FileCommandsTests : IDisposable
         Assert.Empty(render.JsonPayloads);
         Assert.Empty(render.Errors);
     }
-
-    // --- helper ---
-
-    private static Func<Ports, string[], int> Handler(string cmd) => cmd switch
-    {
-        "read" => FileCommands.RunRead,
-        "exists" => FileCommands.RunExists,
-        "info" => FileCommands.RunInfo,
-        "count" => FileCommands.RunCount,
-        "find" => FileCommands.RunFind,
-        "mkdir" => FileCommands.RunMkdir,
-        "write" => FileCommands.RunWrite,
-        "delete-tracked" => FileCommands.RunDeleteTracked,
-        "delete-pattern" => FileCommands.RunDeletePattern,
-        "copy" => FileCommands.RunCopy,
-        "move" => FileCommands.RunMove,
-        _ => throw new ArgumentOutOfRangeException(nameof(cmd)),
-    };
 }

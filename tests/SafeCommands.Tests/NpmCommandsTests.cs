@@ -51,16 +51,6 @@ public class NpmCommandsTests
     }
 
     [Fact]
-    public void RunView_NoArgs_EmitsErrorAndDoesNotSpawn()
-    {
-        var (ports, exec, render) = Setup();
-        var rc = NpmCommands.RunView(ports, []);
-        Assert.Equal(1, rc);
-        Assert.Empty(exec.Calls);
-        Assert.Single(render.Errors);
-    }
-
-    [Fact]
     public void RunView_JsonMode_AddsJsonFlag_ToFirstArgOnly()
     {
         var (ports, exec, _) = Setup(jsonMode: true);

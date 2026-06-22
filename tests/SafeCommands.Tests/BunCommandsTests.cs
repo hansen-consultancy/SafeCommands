@@ -108,17 +108,7 @@ public class BunCommandsTests
         Assert.Equal(new[] { "pm", "ls" }, call.Args);
     }
 
-    [Fact]
-    public void RunBuild_NoArgs_EmitsErrorAndDoesNotSpawn()
-    {
-        var (ports, exec, render) = Setup();
-
-        var rc = BunCommands.RunBuild(ports, []);
-
-        Assert.Equal(1, rc);
-        Assert.Empty(exec.Calls);
-        Assert.Single(render.Errors);
-    }
+    // bun build's no-arg guard moved to the declarative MinArgs check at dispatch (see DispatchTests).
 
     [Fact]
     public void RunBuild_WithEntrypoint_Spawns()

@@ -25,11 +25,11 @@ static class ProcessCommands
     {
         commands.AddRange([
             new("process", "list", "List running processes", "safe process list [--filter <name>]", SafetyLevel.ReadOnly, RunList),
-            new("process", "find", "Find process by name", "safe process find <name>", SafetyLevel.ReadOnly, RunFind),
+            new("process", "find", "Find process by name", "safe process find <name>", SafetyLevel.ReadOnly, RunFind) { MinArgs = 1 },
             new("process", "ports", "Show listening ports", "safe process ports", SafetyLevel.ReadOnly, RunPorts),
-            new("process", "kill-port", "Kill process on specific port", "safe process kill-port <port>", SafetyLevel.CheckedWrite, RunKillPort),
+            new("process", "kill-port", "Kill process on specific port", "safe process kill-port <port>", SafetyLevel.CheckedWrite, RunKillPort) { MinArgs = 1 },
             new("process", "kill-name", "Kill process by name (dev tools only)", "safe process kill-name <name>", SafetyLevel.CheckedWrite, RunKillName)
-                { Policy = Policy.Default.AllowOnlyFirstArg(AllowedKillNames, "Process") },
+                { Policy = Policy.Default.AllowOnlyFirstArg(AllowedKillNames, "Process"), MinArgs = 1 },
         ]);
     }
 
@@ -54,7 +54,6 @@ static class ProcessCommands
 
     internal static int RunFind(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe process find <name>"); return 1; }
         var name = args[0];
 
         var processes = p.Processes.FindByName(name)
@@ -95,7 +94,6 @@ static class ProcessCommands
 
     internal static int RunKillPort(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe process kill-port <port>"); return 1; }
         if (!int.TryParse(args[0], out var port) || port < 1 || port > 65535)
         {
             p.Render.Error("Invalid port number");
@@ -172,7 +170,6 @@ static class ProcessCommands
 
     internal static int RunKillName(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe process kill-name <name>"); return 1; }
         var name = args[0].ToLowerInvariant();
 
         var processes = p.Processes.FindByName(args[0]);

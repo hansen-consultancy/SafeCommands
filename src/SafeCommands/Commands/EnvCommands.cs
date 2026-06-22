@@ -45,8 +45,8 @@ static class EnvCommands
         commands.AddRange([
             new("env", "info", "Show OS, runtime, and shell info", "safe env info", SafetyLevel.ReadOnly, RunInfo),
             new("env", "path", "Show PATH entries", "safe env path", SafetyLevel.ReadOnly, RunPath),
-            new("env", "check", "Check if a tool is available", "safe env check <tool>", SafetyLevel.ReadOnly, RunCheck),
-            new("env", "which", "Show tool location", "safe env which <tool>", SafetyLevel.ReadOnly, RunWhich),
+            new("env", "check", "Check if a tool is available", "safe env check <tool>", SafetyLevel.ReadOnly, RunCheck) { MinArgs = 1 },
+            new("env", "which", "Show tool location", "safe env which <tool>", SafetyLevel.ReadOnly, RunWhich) { MinArgs = 1 },
             new("env", "vars", "Show environment variables (safe vars only, use --all for full list with masking)", "safe env vars [--all] [<filter>]", SafetyLevel.ReadOnly, RunVars),
         ]);
     }
@@ -103,7 +103,6 @@ static class EnvCommands
 
     internal static int RunCheck(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe env check <tool>"); return 1; }
         var tool = args[0];
         var available = p.Exec.Run(WhichCommand, [tool]).ExitCode == 0;
 
@@ -127,7 +126,6 @@ static class EnvCommands
 
     internal static int RunWhich(Ports p, string[] args)
     {
-        if (args.Length == 0) { p.Render.Error("Usage: safe env which <tool>"); return 1; }
         var tool = args[0];
         var r = p.Exec.Run(WhichCommand, [tool]);
         var found = r.ExitCode == 0;

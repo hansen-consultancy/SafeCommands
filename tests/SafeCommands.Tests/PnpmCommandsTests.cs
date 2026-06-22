@@ -48,16 +48,6 @@ public class PnpmCommandsTests
     }
 
     [Fact]
-    public void RunWhy_NoArgs_EmitsErrorAndDoesNotSpawn()
-    {
-        var (ports, exec, render) = Setup();
-        var rc = PnpmCommands.RunWhy(ports, []);
-        Assert.Equal(1, rc);
-        Assert.Empty(exec.Calls);
-        Assert.Single(render.Errors);
-    }
-
-    [Fact]
     public void RunWhy_WithPackage_Spawns()
     {
         var (ports, exec, _) = Setup();

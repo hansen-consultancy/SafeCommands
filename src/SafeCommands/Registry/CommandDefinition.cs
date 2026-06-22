@@ -42,6 +42,16 @@ record CommandDefinition(
     /// </summary>
     public Policy Policy { get; init; } = Policy.Default;
 
+    /// <summary>
+    /// Minimum number of arguments the command requires. Enforced once at the dispatch site (after
+    /// <see cref="Policy"/>, before the handler): too few args renders <c>Usage: {Usage}</c> and
+    /// returns 1. Lets handlers assume <c>args.Length &gt;= MinArgs</c> instead of each repeating an
+    /// inline "Usage:" guard. 0 (default) means no requirement. Genuinely command-specific contracts
+    /// (a required <em>flag</em>, a value range) still live in the handler — this covers only the
+    /// uniform positional-count check.
+    /// </summary>
+    public int MinArgs { get; init; }
+
     public string FullName => $"{Group} {Name}";
 
     public string SafetyLabel => Safety switch

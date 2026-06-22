@@ -20,6 +20,13 @@ static class CommandDispatcher
             ports.Render.Blocked(label, decision.Block!.Reason, decision.Block.Suggestion);
             return 1;
         }
-        return cmd.Handler(ports, decision.SafeArgs!);
+
+        var safeArgs = decision.SafeArgs!;
+        if (safeArgs.Length < cmd.MinArgs)
+        {
+            ports.Render.Error($"Usage: {cmd.Usage}");
+            return 1;
+        }
+        return cmd.Handler(ports, safeArgs);
     }
 }

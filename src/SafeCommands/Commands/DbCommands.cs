@@ -62,7 +62,8 @@ static class DbCommands
 
             // EF Core
             new("db", "ef-migrations-list", "List EF Core migrations", "safe db ef-migrations-list", SafetyLevel.ReadOnly, RunEfMigrationsList),
-            new("db", "ef-migrations-add", "Add new EF Core migration", "safe db ef-migrations-add <name>", SafetyLevel.SafeWrite, RunEfMigrationsAdd),
+            new("db", "ef-migrations-add", "Add new EF Core migration", "safe db ef-migrations-add <name>", SafetyLevel.SafeWrite, RunEfMigrationsAdd)
+                { MinArgs = 1 },
             new("db", "ef-database-update", "Apply EF Core migrations", "safe db ef-database-update", SafetyLevel.CheckedWrite, RunEfDatabaseUpdate)
                 { Policy = Policy.Default.BlockFlags(DestructiveFlags, "This flag can cause irreversible data loss (drops tables or data)", "Remove the destructive flag (e.g. --force, --accept-data-loss) for a safe operation") },
             new("db", "ef-migrations-script", "Generate SQL script from migrations", "safe db ef-migrations-script", SafetyLevel.ReadOnly, RunEfMigrationsScript),
@@ -124,11 +125,7 @@ static class DbCommands
 
     internal static int RunEfMigrationsList(Ports p, string[] args) => Run.Tool(p, "dotnet", ["ef", "migrations", "list", ..args]);
 
-    internal static int RunEfMigrationsAdd(Ports p, string[] args)
-    {
-        if (args.Length == 0) { p.Render.Error("Usage: safe db ef-migrations-add <name>"); return 1; }
-        return Run.Tool(p, "dotnet", ["ef", "migrations", "add", ..args]);
-    }
+    internal static int RunEfMigrationsAdd(Ports p, string[] args) => Run.Tool(p, "dotnet", ["ef", "migrations", "add", ..args]);
 
     internal static int RunEfDatabaseUpdate(Ports p, string[] args) => Run.Tool(p, "dotnet", ["ef", "database", "update", ..args]);
 

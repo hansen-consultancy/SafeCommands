@@ -203,35 +203,17 @@ public class GitCommandsTests
     [Fact]
     public void RunAdd_WithFiles_PassesThrough() => AssertArgs(GitCommands.RunAdd, ["a.cs", "b.cs"], "add", "a.cs", "b.cs");
 
-    // === Usage guards (return 1, no spawn, error emitted) ===
+    // === Usage guards ===
+    // The positional-count guards (show / blame / rev-parse / branch-create / checkout / checkout-file /
+    // merge / cherry-pick) moved to the declarative MinArgs check at the dispatch seam — covered by
+    // DispatchTests.Execute_BelowMinArgs_*. `add` keeps an inline guard because its message carries an
+    // extra hint ("use add-tracked"), and `commit` keeps one because it requires the -m *flag*, not a count.
 
-    [Theory]
-    [InlineData("show")]
-    [InlineData("blame")]
-    [InlineData("rev-parse")]
-    [InlineData("add")]
-    [InlineData("branch-create")]
-    [InlineData("checkout")]
-    [InlineData("checkout-file")]
-    [InlineData("merge")]
-    [InlineData("cherry-pick")]
-    public void NoArg_Handlers_EmitErrorAndDoNotSpawn(string cmd)
+    [Fact]
+    public void RunAdd_NoArgs_EmitsErrorAndDoesNotSpawn()
     {
         var (ports, exec, render) = Setup();
-        var handler = cmd switch
-        {
-            "show" => (Func<Ports, string[], int>)GitCommands.RunShow,
-            "blame" => GitCommands.RunBlame,
-            "rev-parse" => GitCommands.RunRevParse,
-            "add" => GitCommands.RunAdd,
-            "branch-create" => GitCommands.RunBranchCreate,
-            "checkout" => GitCommands.RunCheckout,
-            "checkout-file" => GitCommands.RunCheckoutFile,
-            "merge" => GitCommands.RunMerge,
-            "cherry-pick" => GitCommands.RunCherryPick,
-            _ => throw new ArgumentOutOfRangeException(nameof(cmd)),
-        };
-        Assert.Equal(1, handler(ports, []));
+        Assert.Equal(1, GitCommands.RunAdd(ports, []));
         Assert.Empty(exec.Calls);
         Assert.Single(render.Errors);
     }
