@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using SafeCommands.Infrastructure;
+using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
 using SafeCommands.Sugar;
 
@@ -51,7 +51,9 @@ static class EnvCommands
         ]);
     }
 
-    private static int RunInfo(string[] args, bool json)
+    private static string WhichCommand => RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "where" : "which";
+
+    internal static int RunInfo(Ports p, string[] args)
     {
         var info = new
         {
@@ -68,79 +70,75 @@ static class EnvCommands
             processorCount = Environment.ProcessorCount,
         };
 
-        if (json)
-        {
-            OutputFormatter.WriteJson(info);
-        }
+        if (p.Render.JsonMode)
+            p.Render.Json(info);
         else
         {
-            Console.WriteLine($"OS:          {info.os}");
-            Console.WriteLine($"Arch:        {info.arch}");
-            Console.WriteLine($"Platform:    {info.platform}");
-            Console.WriteLine($".NET:        {info.dotnetVersion}");
-            Console.WriteLine($"Directory:   {info.currentDirectory}");
-            Console.WriteLine($"User:        {info.userName}");
-            Console.WriteLine($"Machine:     {info.machineName}");
-            Console.WriteLine($"CPUs:        {info.processorCount}");
+            p.Render.Info($"OS:          {info.os}");
+            p.Render.Info($"Arch:        {info.arch}");
+            p.Render.Info($"Platform:    {info.platform}");
+            p.Render.Info($".NET:        {info.dotnetVersion}");
+            p.Render.Info($"Directory:   {info.currentDirectory}");
+            p.Render.Info($"User:        {info.userName}");
+            p.Render.Info($"Machine:     {info.machineName}");
+            p.Render.Info($"CPUs:        {info.processorCount}");
         }
         return 0;
     }
 
-    private static int RunPath(string[] args, bool json)
+    internal static int RunPath(Ports p, string[] args)
     {
         var pathVar = Environment.GetEnvironmentVariable("PATH") ?? "";
         var separator = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ';' : ':';
         var entries = pathVar.Split(separator, StringSplitOptions.RemoveEmptyEntries);
 
-        if (json)
-            OutputFormatter.WriteJson(new { entries });
+        if (p.Render.JsonMode)
+            p.Render.Json(new { entries });
         else
             foreach (var entry in entries)
-                Console.WriteLine(entry);
+                p.Render.Info(entry);
 
         return 0;
     }
 
-    private static int RunCheck(string[] args, bool json)
+    internal static int RunCheck(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe env check <tool>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe env check <tool>"); return 1; }
         var tool = args[0];
-        var available = ProcessRunner.CommandExists(tool);
+        var available = p.Exec.Run(WhichCommand, [tool]).ExitCode == 0;
 
         string? version = null;
         if (available)
         {
-            // Try to get version
-            var (code, output, _) = ProcessRunner.Run(tool, ["--version"]);
-            if (code == 0 && !string.IsNullOrWhiteSpace(output))
-                version = output.Split('\n')[0].Trim();
+            var r = p.Exec.Run(tool, ["--version"]);
+            if (r.ExitCode == 0 && !string.IsNullOrWhiteSpace(r.StdOut))
+                version = r.StdOut.Split('\n')[0].Trim();
         }
 
-        if (json)
-            OutputFormatter.WriteJson(new { tool, available, version });
-        else if (available)
-            Console.WriteLine($"{tool}: available{(version != null ? $" ({version})" : "")}");
+        if (p.Render.JsonMode)
+            p.Render.Json(new { tool, available, version });
         else
-            Console.WriteLine($"{tool}: not found");
+            p.Render.Info(available
+                ? $"{tool}: available{(version != null ? $" ({version})" : "")}"
+                : $"{tool}: not found");
 
         return available ? 0 : 1;
     }
 
-    private static int RunWhich(string[] args, bool json)
+    internal static int RunWhich(Ports p, string[] args)
     {
-        if (args.Length == 0) { OutputFormatter.WriteError("Usage: safe env which <tool>"); return 1; }
+        if (args.Length == 0) { p.Render.Error("Usage: safe env which <tool>"); return 1; }
         var tool = args[0];
-        var whichCmd = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "where" : "which";
-        var (code, output, _) = ProcessRunner.Run(whichCmd, [tool]);
+        var r = p.Exec.Run(WhichCommand, [tool]);
+        var found = r.ExitCode == 0;
+        var path = found ? r.StdOut.Split('\n')[0].Trim() : null;
 
-        if (json)
-            OutputFormatter.WriteJson(new { tool, found = code == 0, path = code == 0 ? output.Split('\n')[0].Trim() : null });
-        else if (code == 0)
-            Console.WriteLine(output.Split('\n')[0].Trim());
+        if (p.Render.JsonMode)
+            p.Render.Json(new { tool, found, path });
         else
-            Console.WriteLine($"{tool}: not found");
+            p.Render.Info(found ? path! : $"{tool}: not found");
 
-        return code == 0 ? 0 : 1;
+        return found ? 0 : 1;
     }
 
     private static bool IsSafeVar(string key)
@@ -155,7 +153,7 @@ static class EnvCommands
         return SecretPatterns.Any(p => upper.Contains(p));
     }
 
-    private static int RunVars(string[] args, bool json)
+    internal static int RunVars(Ports p, string[] args)
     {
         var showAll = Args.HasFlag(args, "--all");
         var remaining = Args.Without(args, "--all");
@@ -188,14 +186,15 @@ static class EnvCommands
             entries[key] = value;
         }
 
-        if (showAll && !json)
-            Console.WriteLine("WARNING: Showing all variables with secret values masked. Some secrets may still leak through unusual naming.");
-
-        if (json)
-            OutputFormatter.WriteJson(entries);
+        if (p.Render.JsonMode)
+            p.Render.Json(entries);
         else
+        {
+            if (showAll)
+                p.Render.Warning("Showing all variables with secret values masked. Some secrets may still leak through unusual naming.");
             foreach (var (key, value) in entries.OrderBy(e => e.Key))
-                Console.WriteLine($"{key}={value}");
+                p.Render.Info($"{key}={value}");
+        }
 
         return 0;
     }
