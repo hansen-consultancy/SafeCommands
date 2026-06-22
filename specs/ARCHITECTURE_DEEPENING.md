@@ -222,12 +222,14 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 > **Remaining:** the group migration is **done — all 12 registry groups are on `(Ports,string[])` and the
 > legacy handler shim has zero registry users.** What's left is cleanup plus two independent items, each its
 > own future slice:
-> - **Retire the shim plumbing.** The `CommandDefinition` legacy-handler ctor is now dead (the only remaining
->   `(string[],bool)` handlers are in `MetaCommands`, dispatched directly from `Program.cs` *outside* the
->   registry) and can be deleted. `OutputFormatter` can only be *reduced* for now — `MetaCommands` still uses
->   it and `ConsoleRenderer` depends on its `JsonOptions` — so full deletion waits on migrating `meta`.
->   `IRenderer.JsonMode` is still load-bearing (every dual-mode handler branches on it); removing it needs the
->   deeper "renderer owns both renderings from a typed payload" redesign, not a mechanical pass.
+> - **Retire the shim plumbing.** ✅ **Slice 7 (this PR):** the `CommandDefinition` legacy-handler ctor
+>   (`Func<string[],bool,int>` → `(Ports,string[])` adapter) is **deleted** — the registry no longer carries
+>   the two-world handler shape; its removal compiles clean and the full suite passes, which proves it had
+>   zero callers (the only `(string[],bool)` handlers left are in `MetaCommands`, dispatched directly from
+>   `Program.cs` *outside* the registry). Still pending: `OutputFormatter` can only be *reduced* (it's used by
+>   `MetaCommands`, and `ConsoleRenderer` depends on its `JsonOptions`), so full deletion waits on migrating
+>   `meta`; and `IRenderer.JsonMode` remains load-bearing (every dual-mode handler branches on it) — removing
+>   it needs the deeper "renderer owns both renderings from a typed payload" redesign, not a mechanical pass.
 > - **Consolidate the 54 inline `"Usage:"` guards** into a declarative arg-spec at dispatch.
 > - **Extract `Program.cs`'s outer shell** (routing, `--json` strip + proxy arg-splice, `--help`, global
 >   try/catch) into a table-testable `Dispatch(Ports,string[])`.
