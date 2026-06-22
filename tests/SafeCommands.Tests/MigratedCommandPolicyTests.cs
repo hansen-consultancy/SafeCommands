@@ -17,8 +17,9 @@ namespace SafeCommands.Tests;
 /// processes. Therefore every allow/clean/rewrite case for that group asserts on the policy DIRECTLY
 /// (Find(...)!.Policy.Evaluate — pure, no spawn). Only blocked cases may go through the dispatcher, and
 /// only where the central render path is the thing under test. (docker/npm/pnpm/db/git/env now route
-/// through ports.Exec, so a FakeExecutor absorbs their spawns — see the dispatch-level allow tests at
-/// the end, which were impossible before this migration.)
+/// through ports.Exec, and file's only spawns — the delete-tracked/move git probes — likewise route
+/// through ports.Exec, so a FakeExecutor absorbs them — see the dispatch-level allow tests at the end,
+/// which were impossible before this migration. process is now the LAST group still on raw Process.)
 /// </summary>
 public class MigratedCommandPolicyTests
 {
@@ -743,5 +744,37 @@ public class MigratedCommandPolicyTests
         var call = Assert.Single(exec.Calls);
         Assert.Equal("git", call.Tool);
         Assert.Equal(new[] { "status" }, call.Args);
+    }
+
+    [Fact]
+    public void Dispatch_FileDeleteTracked_PathAllowed_RoutesProbeThroughExecutor_NoRealSpawn()
+    {
+        // file's only spawns are the delete-tracked/move git probes. Post-migration they go through
+        // ports.Exec, so a FakeExecutor absorbs them. The path policy ALLOWS the file (WithinPredicate
+        // = true), so dispatch reaches the handler; the handler's "not tracked" block (FakeExecutor
+        // returns exit 1) is distinct from a policy "outside project" block, proving the policy passed
+        // AND the git probe ran through the executor rather than spawning real git.
+        CommandRegistry.Initialize();
+        var cmd = CommandRegistry.Find("file", "delete-tracked");
+        Assert.NotNull(cmd);
+
+        var tmp = Path.Combine(Path.GetTempPath(), "safecmd-dispatch-" + Guid.NewGuid().ToString("N") + ".txt");
+        File.WriteAllText(tmp, "x");
+        try
+        {
+            var exec = new FakeExecutor { NextResult = new ExecResult(1, "", "") }; // git ls-files -> not tracked
+            var render = new FakeRenderer();
+            var ports = new Ports(exec, render, new FakeRepoProbe(), new FakeWorkspace { WithinPredicate = _ => true });
+
+            var rc = CommandDispatcher.Execute(cmd, ports, "file", "delete-tracked", [tmp]);
+
+            Assert.Equal(1, rc);
+            var probe = Assert.Single(exec.Calls);
+            Assert.Equal("git", probe.Tool);
+            Assert.Equal(new[] { "ls-files", "--error-unmatch", tmp }, probe.Args);
+            Assert.Contains("not tracked", Assert.Single(render.Blocks).Reason);
+            Assert.True(File.Exists(tmp)); // never deleted
+        }
+        finally { File.Delete(tmp); }
     }
 }

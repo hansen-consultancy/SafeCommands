@@ -181,13 +181,29 @@ guards (`FileCommands.cs:41-43`), and the "nested safe dirs" fix from commit `f6
 > (single-positional vs splat, `checkout-file`'s `--` insertion, stash subcommands, both JSON parsers).
 > Shim count drops **3 → 2**. Behavior-preserving (no argv or policy change).
 >
-> **Remaining:** migrate the 2 hardest groups. **`file`** — 6 `WriteBlocked` `--json` fork + path
-> sandboxing (STRIDE E1); its writes go through `IWorkspace`/`File.*`, not `IExecutor`, so the migration
-> is rendering + signature, not execution. **`process`** — raw `System.Diagnostics.Process`
-> kill/enumerate has **no `IExecutor` seam yet**; it needs a process-host port, not a mechanical pass.
-> Then the shim ctor, `IRenderer.JsonMode`, and most of `OutputFormatter` can be deleted. Two independent
-> items remain: consolidate the 54 inline `"Usage:"` guards into a declarative arg-spec at dispatch, and
-> extract `Program.cs`'s outer shell into a table-testable `Dispatch(Ports,string[])`.
+> **Slice 5 shipped (this PR):** **`file`** migrated — the largest group, and the one carrying path
+> sandboxing (STRIDE E1/I2). Its 6 app-level `OutputFormatter.WriteBlocked` sites (overwrite protection
+> on `copy`/`write`; the git-tracked + clean-tree gates on `delete-tracked`/`move`) moved to
+> `Render.Blocked`, **closing the last `--json` blocked-envelope fork** — those blocks now emit the
+> structured `{blocked,…}` envelope under `--json` instead of Spectre markup. All output dropped
+> `OutputFormatter` + raw `Console`/`AnsiConsole`; `file read`'s byte-faithful content dump is preserved
+> by a new additive `IRenderer.Raw(string)` primitive (verbatim stdout, no added newline — the faithful
+> translation of the old `Console.Write(content)`, pinned at the adapter level since a `FakeRenderer`
+> structurally can't exhibit a newline regression). The group's only spawns — the `delete-tracked` /
+> `move` git probes — now route through `IExecutor`, **closing file's SPAWN HAZARD** (new dispatch-level
+> test absorbs the `ls-files` probe in a `FakeExecutor`). The declared path-containment policies in
+> `Register()` (`RequirePathWithinProject` / `RequireWithinSafeDeleteDir`) are byte-identical — E1/I2
+> sandboxing is untouched, still enforced centrally at dispatch before the handler. +48 tests. Shim count
+> drops **2 → 1** (only `process` remains on the legacy shim). STRIDE was reviewed and needs no entry: an
+> execution-seam reroute (`ProcessRunner` → the existing `IExecutor`/`ProcessExecutor` seam) plus render
+> consistency, with path validation unchanged — no new threat and no mitigation weakened (consistent with
+> slices 1–4).
+>
+> **Remaining:** one group left. **`process`** — raw `System.Diagnostics.Process` kill/enumerate has
+> **no `IExecutor` seam yet**; it needs a process-host port, not a mechanical pass. Once it lands, the
+> legacy shim ctor, `IRenderer.JsonMode`, and most of `OutputFormatter` can be deleted. Two independent
+> items also remain: consolidate the 54 inline `"Usage:"` guards into a declarative arg-spec at dispatch,
+> and extract `Program.cs`'s outer shell into a table-testable `Dispatch(Ports,string[])`.
 
 **Cluster:** `CommandDefinition`'s legacy shim (`:43-52`) + the **two live output stacks**
 (static `OutputFormatter`, ~28 `WriteBlocked` sites across 13 files, vs. `ConsoleRenderer`,

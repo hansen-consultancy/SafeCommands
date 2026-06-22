@@ -186,4 +186,33 @@ public class RendererEnvelopeTests
 
         Assert.Contains("hint", stdout.ToString());
     }
+
+    // ---- Raw: byte-faithful content passthrough (the `file read` contract) ----
+
+    [Fact]
+    public void Raw_WritesVerbatim_AddsNoTrailingNewline()
+    {
+        // The whole reason Raw exists: unlike Info/Result it must NOT append a newline, so
+        // `file read` reproduces file bytes exactly. A regression to _stdout.WriteLine would
+        // be invisible to the FakeRenderer (which stores the string), so it is pinned here.
+        var (r, stdout, stderr) = Make(jsonMode: false);
+
+        r.Raw("ab");
+
+        Assert.Equal("ab", stdout.ToString()); // exact — no '\n' appended
+        Assert.Equal("", stderr.ToString());
+    }
+
+    [Fact]
+    public void Raw_UnderJsonMode_StillWritesVerbatim_NotSuppressed()
+    {
+        // Unlike Info/Warning (suppressed under JsonMode), Raw is unconditional: suppressing it
+        // would silently swallow content. Callers with a JSON shape branch on JsonMode and simply
+        // don't call Raw there; the primitive itself always emits.
+        var (r, stdout, _) = Make(jsonMode: true);
+
+        r.Raw("xy");
+
+        Assert.Equal("xy", stdout.ToString());
+    }
 }
