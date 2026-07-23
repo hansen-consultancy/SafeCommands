@@ -58,15 +58,23 @@ This repository includes a STRIDE threat model (`STRIDE.md`) for security analys
 - Modifying the proxy allowlist or flag filtering logic
 - Adding configuration file loading or trust verification
 - After security incidents or penetration test findings
+- When addressing security recommendations from the document
+- **When a change mitigates or resolves an existing finding** — move it to Mitigated/Resolved (update the mitigation text, score/status, and risk-summary row)
+
+**Updates are bidirectional and ride in the same PR.** Whether a change *introduces/surfaces* a threat or *mitigates/resolves* one, the matching `STRIDE.md` edit ships in the **same PR** as the code/config change — never as a follow-up. A fix that closes a tracked finding is not done until `STRIDE.md` (and the linked issue's status) reflects it. Treat a security-relevant diff with no STRIDE.md change as incomplete.
 
 **How to update:**
 1. Add new threats to the relevant STRIDE category (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege)
 2. Assess likelihood (1-4) and impact (1-4), score = likelihood x impact
-3. Document existing mitigations or add recommendations
+3. Document existing mitigations or add recommendations, citing the control (ASVS chapter / infra ref) in the Control column
 4. Link GitHub issues for unresolved findings
 5. Update the Review History table
 
+**Tracking critical findings:**
+- Critical/High risk findings should have a linked GitHub issue with `security` label
+- Review STRIDE.md annually or after major releases
+
 **High-priority findings:**
-- R1: No audit trail (score 9) - add structured logging
-- I1: Incomplete secret masking in env vars (score 9) - expand patterns
-- E1: File write outside project directory (score 8) - add path sandboxing
+- R1: No audit trail (score 9) - add structured logging ([#1](https://github.com/hansen-consultancy/SafeCommands/issues/1))
+- I1: Incomplete secret masking in env vars (score 9) - **mitigated** (allowlist by default, expanded masking with `--all`)
+- E1: File write outside project directory (score 8) - **mitigated** (declared path-containment policy at the dispatch seam)
