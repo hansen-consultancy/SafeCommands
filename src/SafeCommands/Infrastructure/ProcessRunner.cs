@@ -45,26 +45,6 @@ static class ProcessRunner
         return (process.ExitCode, stdout.ToString().TrimEnd(), stderr.ToString().TrimEnd());
     }
 
-    public static int RunPassthrough(string command, string[] args, string? workingDir = null)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = command,
-            WorkingDirectory = workingDir ?? Directory.GetCurrentDirectory(),
-            UseShellExecute = false,
-            CreateNoWindow = false,
-        };
-
-        foreach (var arg in args)
-            psi.ArgumentList.Add(arg);
-
-        using var process = new Process { StartInfo = psi };
-        process.Start();
-        process.WaitForExit();
-
-        return process.ExitCode;
-    }
-
     public static bool CommandExists(string command)
     {
         try
