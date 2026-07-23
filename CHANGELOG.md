@@ -7,8 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-23
+
+The stability milestone. Every one of the 161 commands across 12 groups now reaches the outside world through a single set of ports, safety is data evaluated centrally before any handler runs, and 582 tests pin those safety claims in memory — no processes, no filesystem. CI guards every push and gates every publish. The CLI surface has only grown (never shrunk) since 0.5.0, so this release is a "now stable" declaration rather than a breaking change: what `safe` accepts and rejects today is what we intend to keep supporting.
+
+### Added
+- **Continuous integration.** `ci.yml` builds and runs the full suite on every push and pull request to `main`. The publish workflow now runs `dotnet test` before packing, so a tagged release with a failing test can never reach NuGet.
+
 ### Changed
 - **`safe git checkout -b <branch>` is now allowed with a dirty working tree.** The clean-tree guard exists to stop a plain branch *switch* from silently abandoning uncommitted work, but `checkout -b` *creates* a branch and carries those changes onto it (git refuses on conflict rather than discarding) — so the guard only obstructed the canonical "start a feature branch" move. `RequireCleanTree` gained an `exemptFlags` set; checkout exempts `-b` (case-folds to also cover `-B`). Plain `checkout <existing>` still requires a clean tree, and `checkout .` is still blocked.
+- **(Behaviour change, scoped to `proxy gh api`)** The `gh api` flag allowlist now permits field (`-f`/`-F`), output (`-q`/`--jq`), and pagination flags for read and POST-via-fields create. `-X`/`--method` and `-H`/`--header` remain excluded, so DELETE/PUT/PATCH cannot be expressed through the gateway — neither directly nor via a method-override header ([#13](https://github.com/hansen-consultancy/SafeCommands/issues/13), STRIDE T5). Previously 0.5.0's newly-enforced allowlist left `gh api` usable only as a bare GET.
+- **Path and flag arguments are matched case-insensitively.** Per-handler arg parsing was unified onto the shared `Sugar/Args` helper; `Safety` flag/path matching was flipped to case-insensitive in lockstep so a handler and its policy always read the same token (a flag like `--IN` cannot honor a path the policy didn't check). Net-safer — matches a superset of before, containment still enforced.
+
+### Internal
+- **Ports-and-adapters migration complete ([#2](https://github.com/hansen-consultancy/SafeCommands/issues/2) closed).** All twelve command groups (git, file, db, env, docker, dotnet, npm, pnpm, proxy, process, meta, generate) now reach the OS only through ports — `IExecutor`, `IRenderer`, `IRepoProbe`, `IWorkspace`, `IProcessHost` — with real adapters and in-memory fakes. `env` and `dotnet`, the last two on the legacy passthrough path in 0.5.0, migrated across.
+- **`Program.cs` outer shell extracted into a testable `Cli`**, so routing and `--json` handling are exercised by unit tests rather than only via subprocess.
+- **Dead code and transitional shims removed:** `OutputFormatter` (superseded by `IRenderer`/`ConsoleRenderer`), the legacy `Func<string[], bool, int>` handler-shim constructor, and `ProcessRunner.RunPassthrough`.
+- Inline Usage guards consolidated into a declarative `MinArgs`; the `generate` group deepened.
+- Test suite grew from 225 to **582**.
+- Dependency bumps: Spectre.Console 0.50.0 → 0.57.2, System.Text.Json 8.0.5 → 8.0.6 (kept on the net8.0 servicing line, deliberately not 10.x), and the test stack (xunit 2.9.3, Microsoft.NET.Test.Sdk 18.8.1, xunit.runner.visualstudio 3.1.5, coverlet.collector 10.0.1).
+
+### Documentation
+- `STRIDE.md` v7: ASVS control-column backfilled across every threat, new E5 (`kill-port` kills the listening port-holder without the dev-tool name allowlist — accepted with recommendation), architecture diagram refreshed to the Cli + Ports/Adapters shape, command count corrected to 161. `CLAUDE.md` now documents the bidirectional, same-PR STRIDE update process.
 
 ## [0.5.0] - 2026-06-12
 
