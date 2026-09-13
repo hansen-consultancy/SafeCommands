@@ -7,6 +7,8 @@
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <OutputType>Exe</OutputType>
+    <StartupObject>SafeCommands.Tests.AuditProcess</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>

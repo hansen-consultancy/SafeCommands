@@ -198,18 +198,25 @@ Each proxy tool has its own allowlist of permitted subcommands and flags.
 
 The core command allowlist is compiled into the binary. It cannot be modified by prompt injection, config file manipulation, or any external input.
 
-### Extension Config (`~/.safecommands/config.json`)
+### Audit History (`~/.safecommands/config.json`)
 
-Optional extension configuration for adding custom safe commands, additional npm script names, process names, or safe directories:
+To enable local invocation history, create `~/.safecommands/config.json` in your OS user home directory (create the `.safecommands` directory first):
 
 ```json
 {
-  "version": 1,
-  "allowedScripts": ["storybook", "e2e"],
-  "allowedProcessNames": ["ruby"],
-  "safeDirs": [".angular/cache"]
+  "audit": true
 }
 ```
+
+Auditing is disabled by default. A missing file, absent `audit` property, or `false` disables it without creating audit files. Invalid or unreadable configuration disables auditing with a generic stderr diagnostic. Only a JSON boolean is accepted. Other properties are ignored; configuration cannot extend the command allowlist or change safety policies.
+
+Each completed outer invocation appends one compact JSON line to `~/.safecommands/audit.log`, including help and failed commands. Records contain schema version, UTC start time, canonical command (or a fixed meta/unknown category), argument count, working directory, OS username, process ID, elapsed milliseconds, exit code, and outcome (`returned` or `threw`). Argument count includes command tokens after removing SafeCommands' global `--json` flag. Recursive `proxy run` dispatch produces one record. Escaping exceptions have a null exit code; routing errors already converted to exit code 1 remain `returned`.
+
+**Privacy:** argument values, option strings, output, exception text, and policy explanations are never logged. Unknown command tokens are not retained. Working directories and usernames still reveal local path and identity information. New files use private permissions, and existing permissions are restricted without granting additional access where supported.
+
+Retention is fixed at three files total: `audit.log`, `audit.log.1`, and `audit.log.2`, each at most 10 MiB. Rotation and append share a persistent `audit.log.lock` file across cooperating processes; do not delete that lock file while commands run. Contention is limited to 250 ms. Incomplete trailing lines are discarded before the next append. Oversized records and failed writes are skipped with at most one generic stderr diagnostic per invocation, including in JSON mode. Audit failures do not change command stdout, return values, or exceptions.
+
+This is best-effort completion history: forced termination may leave no record, filesystem operations can stall beyond the lock timeout, and flush/disposal does not guarantee survival of power loss. The current user can alter or remove history. Records do not authenticate an agent, identify exact argument-named resources, or distinguish policy denial from other failures by exit code alone. It is not a tamper-resistant security ledger.
 
 ## For Developers
 
