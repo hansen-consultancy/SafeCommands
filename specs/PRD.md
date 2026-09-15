@@ -251,7 +251,7 @@ The proxy system allows forwarding commands to any tool, validated against the f
 ```
 safe proxy curl -s https://example.com    # GET requests only
 safe proxy az account show                # Read-only Azure CLI
-safe proxy gh pr list                     # Read-only GitHub CLI
+safe proxy gh pr list                     # GitHub CLI: reads, plus pr/issue create
 safe proxy kubectl get pods               # Read-only k8s
 ```
 
