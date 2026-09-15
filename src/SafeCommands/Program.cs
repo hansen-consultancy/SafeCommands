@@ -1,4 +1,5 @@
 using SafeCommands;
+using SafeCommands.Auditing;
 using SafeCommands.Infrastructure.Adapters;
 using SafeCommands.Infrastructure.Ports;
 using SafeCommands.Registry;
@@ -11,4 +12,5 @@ var (jsonOutput, cliArgs) = Cli.StripJson(args);
 var exec = new ProcessExecutor();
 var ports = new Ports(exec, new ConsoleRenderer(jsonOutput), new GitRepoProbe(exec), new FileSystemWorkspace(), new ProcessHost());
 
-return Cli.Route(ports, cliArgs, jsonOutput);
+var audit = CommandAudit.FromEnvironment(Console.Error);
+return audit.Run(cliArgs, () => Cli.Route(ports, cliArgs, jsonOutput));
