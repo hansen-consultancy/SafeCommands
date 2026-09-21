@@ -562,6 +562,7 @@ public class MigratedCommandPolicyTests
     [InlineData("pr", "-T")]      // --template: would read a repo file into the body
     [InlineData("pr", "-t")]      // long form only, so -T stays blocked under case folding
     [InlineData("pr", "-r")]      // long form only, so -R (--repo) stays blocked
+    [InlineData("pr", "-f")]      // --fill long form only, so -F (--body-file) stays blocked
     [InlineData("issue", "-T")]
     [InlineData("issue", "-t")]
     public void Proxy_GhCreate_BlocksCaseFoldedShortFlags(string kind, string flag)
