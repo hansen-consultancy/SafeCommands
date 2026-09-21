@@ -546,6 +546,61 @@ public class MigratedCommandPolicyTests
     public void Proxy_GhPrView_AllowsJson()
         => Assert.False(P("proxy", "gh").Evaluate(["pr", "view", "--json"], Ctx()).IsBlocked);
 
+    [Theory]
+    [InlineData("pr")]
+    [InlineData("issue")]
+    public void Proxy_GhCreate_AllowsTitleAndBody(string kind)
+        => Assert.False(P("proxy", "gh")
+            .Evaluate([kind, "create", "--title", "t", "--body", "b"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_GhPrCreate_AllowsBaseHeadDraft()
+        => Assert.False(P("proxy", "gh")
+            .Evaluate(["pr", "create", "--base", "main", "-H", "feat/x", "--draft", "--fill"], Ctx()).IsBlocked);
+
+    [Theory]
+    [InlineData("pr", "-T")]      // --template: would read a repo file into the body
+    [InlineData("pr", "-t")]      // long form only, so -T stays blocked under case folding
+    [InlineData("pr", "-r")]      // long form only, so -R (--repo) stays blocked
+    [InlineData("pr", "-f")]      // --fill long form only, so -F (--body-file) stays blocked
+    [InlineData("issue", "-T")]
+    [InlineData("issue", "-t")]
+    public void Proxy_GhCreate_BlocksCaseFoldedShortFlags(string kind, string flag)
+        // Flag matching folds case (Flag.Base lowercases), so a short flag in the allowlist admits
+        // its uppercase twin. --title/--reviewer are therefore listed long-form only; this test
+        // fails the moment someone "helpfully" adds -t or -r back.
+        => Assert.True(P("proxy", "gh")
+            .Evaluate([kind, "create", flag, "x", "--title", "t"], Ctx()).IsBlocked);
+
+    [Theory]
+    [InlineData("pr", "--repo")]
+    [InlineData("pr", "-R")]
+    [InlineData("pr", "--body-file")]
+    [InlineData("pr", "-F")]
+    [InlineData("issue", "--repo")]
+    [InlineData("issue", "-R")]
+    [InlineData("issue", "--body-file")]
+    [InlineData("issue", "-F")]
+    public void Proxy_GhCreate_BlocksExfilFlags(string kind, string flag)
+        // --repo would aim the write at an attacker-controlled repo; --body-file would read an
+        // arbitrary file into a possibly-public body. Together they are I4's exfil class over a
+        // different transport, so both stay out of the create allowlists.
+        => Assert.True(P("proxy", "gh")
+            .Evaluate([kind, "create", flag, "x", "--title", "t"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Proxy_GhApi_StillAllowsFieldShorthand_AfterPrCreateAdded()
+        // -F is --body-file under "pr create" but --field under "api"; flags are per-subcommand,
+        // so blocking it on create must not leak into api.
+        => Assert.False(P("proxy", "gh")
+            .Evaluate(["api", "repos/o/r/issues", "-F", "body=b"], Ctx()).IsBlocked);
+
+    [Theory]
+    [InlineData("merge")]
+    [InlineData("close")]
+    public void Proxy_GhPr_BlocksActOnExistingWork(string verb)
+        => Assert.True(P("proxy", "gh").Evaluate(["pr", verb, "1"], Ctx()).IsBlocked);
+
     [Fact]
     public void Proxy_TerraformPlan_AllowsVar()
         => Assert.False(P("proxy", "terraform").Evaluate(["plan", "-var", "foo=bar"], Ctx()).IsBlocked);

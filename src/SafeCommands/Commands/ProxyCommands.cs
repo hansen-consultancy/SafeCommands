@@ -30,6 +30,30 @@ static class ProxyCommands
             new("pr status", []),
             new("pr checks", []),
             new("pr diff", []),
+            // Write verbs. Creation is additive and reversible (close the PR/issue), and `gh api`
+            // already reaches it via POST-via-fields, so the ergonomic front door adds no new
+            // capability. The risk here is flag-shaped, not command-shaped:
+            //   --repo/-R      omitted: pins the write to the current repo, so a PR/issue body
+            //                  can't be aimed at an attacker-controlled repo.
+            //   --body-file/-F omitted: no arbitrary file read into a possibly-public body
+            //                  (the exfil class of I4, different transport). --template/-T and
+            //                  --editor/-e are out for the same reason / interactivity.
+            // Note -F means --body-file here but --field under `api`; flags are per-subcommand,
+            // so the two never mix. `gh pr create` pushes the current branch if unpushed — a push
+            // the git policy never sees, accepted because `safe git push` is already allowed.
+            // BLOCKED: pr merge, pr close, issue close — those act on others' work.
+            //
+            // Long forms only for --title and --reviewer: flag matching folds case (Flag.Base
+            // lowercases), so listing "-t" would also admit "-T" (--template) and "-r" would also
+            // admit "-R" (--repo) — the two omissions above. Every short flag that IS listed was
+            // checked against `gh pr create --help`: "-b" admits "-B" (--base, allowed anyway),
+            // "-H" admits "-h" (--help, harmless), and "-d"/"-a"/"-l" have no uppercase twin in
+            // gh's flag table for these subcommands (`-D`/`--delete-branch` belongs to `pr merge`,
+            // which is blocked outright). Adding a short flag here means re-running that check —
+            // keep gh's case-distinguished pairs out unless BOTH cases are intended.
+            new("pr create", ["--title", "--body", "-b", "--base", "--head", "-H",
+                "--draft", "-d", "--fill", "--assignee", "-a", "--label", "-l", "--reviewer"]),
+            new("issue create", ["--title", "--body", "-b", "--assignee", "-a", "--label", "-l"]),
             new("issue list", ["--state", "--label", "--author", "--limit", "--json", "--search", "--assignee"]),
             new("issue view", ["--json", "--web"]),
             new("issue status", []),
@@ -145,8 +169,8 @@ static class ProxyCommands
         commands.Add(new("proxy", "curl", "HTTP GET request via curl",
             "safe proxy curl <url> [-s] [-H <header>]", SafetyLevel.ReadOnly, (p, a) => RunTool(p, "curl", a))
             { Policy = PolicyFor("curl") });
-        commands.Add(new("proxy", "gh", "GitHub CLI (read-only ops)",
-            "safe proxy gh <command>", SafetyLevel.ReadOnly, (p, a) => RunTool(p, "gh", a))
+        commands.Add(new("proxy", "gh", "GitHub CLI (read ops + PR/issue create)",
+            "safe proxy gh <command>", SafetyLevel.SafeWrite, (p, a) => RunTool(p, "gh", a))
             { Policy = PolicyFor("gh") });
         commands.Add(new("proxy", "az", "Azure CLI (read-only ops)",
             "safe proxy az <command>", SafetyLevel.ReadOnly, (p, a) => RunTool(p, "az", a))

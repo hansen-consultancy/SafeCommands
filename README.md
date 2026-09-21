@@ -180,7 +180,7 @@ For any agent that supports command allowlisting, allowlist the `safe` command g
 The proxy system allows safe access to tools not in the main groups:
 
 ```bash
-safe proxy gh pr list              # GitHub CLI (read-only operations)
+safe proxy gh pr list              # GitHub CLI (reads + pr/issue create)
 safe proxy az account show         # Azure CLI (read-only)
 safe proxy kubectl get pods        # Kubernetes (read-only)
 safe proxy terraform plan          # Terraform (plan only, no apply/destroy)
