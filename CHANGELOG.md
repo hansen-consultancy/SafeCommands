@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-21
+
+Two additions to what the gateway can do, both opt-in or additive: local completion history for the commands an agent ran, and PR/issue creation through the `gh` proxy. No command that worked in 1.0.0 behaves differently.
+
+### Added
+- **Opt-in command audit history** ([#1](https://github.com/hansen-consultancy/SafeCommands/issues/1), partial R1 mitigation). With `{"audit": true}` in `~/.safecommands/config.json`, each completed outer invocation appends one compact JSON line to `~/.safecommands/audit.log`: schema version, UTC start, canonical command (or a fixed meta/unknown category), argument *count*, working directory, OS username, PID, elapsed ms, exit code, and outcome. Disabled by default; a missing, malformed or unreadable config disables it without creating files, and configuration can never extend the allowlist or change a policy. Argument values, option strings, output, exception text and policy reasons are never written. Retention is fixed at three 10 MiB files with cross-process locking; audit failures never change a command's stdout, return value or exceptions. Best-effort completion history, explicitly **not** a tamper-resistant ledger — the current user can alter or remove it.
+- **`safe proxy gh pr create` and `safe proxy gh issue create`** ([#28](https://github.com/hansen-consultancy/SafeCommands/pull/28)). Creation was already reachable through `gh api`'s POST-via-fields path, so this adds the ergonomic front door rather than new capability. Allowed flags: `--title`, `--body`/`-b`, `--base`, `--head`/`-H`, `--draft`/`-d`, `--fill`, `--assignee`/`-a`, `--label`/`-l`, `--reviewer` (`pr create`); title/body/assignee/label (`issue create`). Deliberately omitted: `--repo` (pins the write to the current repository), `--body-file` and `--template` (no arbitrary file read into a possibly-public body), `--editor` (interactive). `pr merge`, `pr close` and `issue close` remain blocked — they act on work that isn't the agent's. The `gh` proxy command is reclassified `ReadOnly` → `SafeWrite`; that label was already stale, since `gh api -f` reached creation.
+
+### Changed
+- Dependency bumps: Microsoft.NET.Test.Sdk 18.8.1 → 18.10.1, xunit.runner.visualstudio 3.1.5 → 4.0.0 (dev-only; still supports xunit v2, so xunit stays on 2.9.3). System.Text.Json deliberately stays on 8.0.6 — the latest 8.0.x — rather than 10.x, keeping the net8.0 servicing line.
+- Test suite grew from 582 to **665**.
+
+### Documentation
+- `STRIDE.md` v9: **I8** (exfiltration via `gh` write verbs — fully mitigated by the flag omissions above) and **E6** (allowlist bypass via case-folded short flag — partially mitigated, [#27](https://github.com/hansen-consultancy/SafeCommands/issues/27)). E6 was surfaced by a regression test during #28: `Flag.Base` lowercases before matching, so an allowlisted short flag also admits its uppercase twin — `pr create -R` passed because `-r` (`--reviewer`) was allowlisted. Mitigated per-entry for now by listing dangerous-twin flags long-form only, pinned by tests; the structural fix (case-sensitive allowlist matching, case-insensitive blocklist matching) is tracked in #27.
+- `STRIDE.md` v8 (shipped with the audit work): R1 downgraded to partially mitigated, plus **I7** (local audit metadata disclosure) and **D4** (audit storage availability), with the per-user storage boundary and retention/privacy controls documented.
+
 ## [1.0.0] - 2026-07-23
 
 The stability milestone. Every one of the 161 commands across 12 groups now reaches the outside world through a single set of ports, safety is data evaluated centrally before any handler runs, and 582 tests pin those safety claims in memory — no processes, no filesystem. CI guards every push and gates every publish. The CLI surface has only grown (never shrunk) since 0.5.0, so this release is a "now stable" declaration rather than a breaking change: what `safe` accepts and rejects today is what we intend to keep supporting.
