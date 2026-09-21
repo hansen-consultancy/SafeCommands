@@ -45,9 +45,12 @@ static class ProxyCommands
             //
             // Long forms only for --title and --reviewer: flag matching folds case (Flag.Base
             // lowercases), so listing "-t" would also admit "-T" (--template) and "-r" would also
-            // admit "-R" (--repo) — the two omissions above. "-b" is listed and admits "-B"
-            // (--base), which is allowed anyway; "-H" admits "-h" (--help). Keep gh's
-            // case-distinguished short flags out of this list unless BOTH cases are intended.
+            // admit "-R" (--repo) — the two omissions above. Every short flag that IS listed was
+            // checked against `gh pr create --help`: "-b" admits "-B" (--base, allowed anyway),
+            // "-H" admits "-h" (--help, harmless), and "-d"/"-a"/"-l" have no uppercase twin in
+            // gh's flag table for these subcommands (`-D`/`--delete-branch` belongs to `pr merge`,
+            // which is blocked outright). Adding a short flag here means re-running that check —
+            // keep gh's case-distinguished pairs out unless BOTH cases are intended.
             new("pr create", ["--title", "--body", "-b", "--base", "--head", "-H",
                 "--draft", "-d", "--fill", "--assignee", "-a", "--label", "-l", "--reviewer"]),
             new("issue create", ["--title", "--body", "-b", "--assignee", "-a", "--label", "-l"]),
