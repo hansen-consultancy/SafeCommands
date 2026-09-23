@@ -103,11 +103,48 @@ public class MigratedCommandPolicyTests
     public void Git_Checkout_CleanTree_AllowsBranchSwitch()
         => Assert.False(P("git", "checkout").Evaluate(["feature"], Ctx()).IsBlocked);
 
-    [Theory]
-    [InlineData("-b")] // create + switch carries uncommitted changes onto the new branch
-    public void Git_Checkout_DirtyTree_AllowsBranchCreate(string flag)
+    [Fact]
+    public void Git_Checkout_DirtyTree_AllowsBranchCreate()
+        // create + switch carries uncommitted changes onto the new branch
         => Assert.False(P("git", "checkout")
-            .Evaluate([flag, "feature"], Ctx(repo: new FakeRepoProbe { IsCleanTree = false })).IsBlocked);
+            .Evaluate(["-b", "feature"], Ctx(repo: new FakeRepoProbe { IsCleanTree = false })).IsBlocked);
+
+    [Theory]
+    [InlineData("-B", "feature")]           // create-or-reset: drops an existing branch's commits
+    [InlineData("-qB", "feature")]          // ...also when bundled
+    [InlineData("-f", "main")]              // discards uncommitted changes
+    [InlineData("--force", "main")]
+    [InlineData("--forc", "main")]          // git accepts unambiguous long-option prefixes
+    [InlineData("--discard-changes", "main")]
+    [InlineData("-fb", "feature")]          // -f -b: would discard past the -b clean-tree exemption
+    public void Git_Checkout_BlocksWorkDiscardingFlags(string flag, string target)
+        => Assert.True(P("git", "checkout").Evaluate([flag, target], Ctx()).IsBlocked);
+
+    [Theory]
+    [InlineData("--no-verif")]  // abbreviated --no-verify
+    [InlineData("--no-ver")]
+    [InlineData("-an")]         // bundled -a -n
+    [InlineData("-nm")]
+    public void Git_Commit_BlocksSmuggledHookBypass(string flag)
+        => Assert.True(P("git", "commit").Evaluate([flag, "-m", "msg"], Ctx()).IsBlocked);
+
+    [Theory]
+    [InlineData("-am")]
+    [InlineData("--allow-empty")]
+    [InlineData("-S")]
+    public void Git_Commit_AllowsUnrelatedFlags(string flag)
+        => Assert.False(P("git", "commit").Evaluate([flag, "-m", "msg"], Ctx()).IsBlocked);
+
+    [Theory]
+    [InlineData("--forc")]
+    [InlineData("-uf")]
+    [InlineData("--del")]
+    public void Git_Push_BlocksSmuggledForceOrDelete(string flag)
+        => Assert.True(P("git", "push").Evaluate([flag, "origin", "main"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Git_Push_ForceWithLease_StillAllowed()
+        => Assert.False(P("git", "push").Evaluate(["-u", "--force-with-lease", "origin", "feat"], Ctx()).IsBlocked);
 
     [Fact]
     public void Git_Checkout_DirtyTree_ExemptionIsCaseSensitive()

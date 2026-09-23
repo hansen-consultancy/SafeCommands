@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **Blocklists catch bundled and abbreviated flags.** Blocked flags were matched as whole tokens, so `safe git commit -an -m x` (bundled `-a -n`) and `--no-verif` (git accepts unambiguous long-option prefixes) skipped pre-commit hooks, and `push --forc`/`-uf` got past the force-push block. `BlockFlags` now expands all-letter short-flag bundles and treats a prefix of a blocked long flag as that flag (STRIDE T2, T3). Only widens what blocks; `--force-with-lease` still works.
+- **`safe git checkout` blocks `-B`, `-f`, `--force` and `--discard-changes`.** `-B` on an existing branch reset it and dropped its commits; `-f` discarded uncommitted changes, and `-f -b <new>` did so past the clean-tree check (STRIDE T7). `-b` (create) is unaffected.
 - **Allowlist flags now match case-sensitively** ([#27](https://github.com/hansen-consultancy/SafeCommands/issues/27), STRIDE E6 → fully mitigated). Case folding is right for blocklists (`--Force` still blocks) but failed open for allowlists: an allowed `-r` (`gh pr create --reviewer`) also admitted `-R` (`--repo`). Subcommand allowlists and clean-tree exemptions now compare the exact flag; blocklists are unchanged. A registry-wide test asserts no allowlisted flag's case twin gets through. The gh create allowlists regain their short forms (`-t`, `-r`, `-f`, `-B`). Behaviour change: `safe git checkout -B` no longer rides `-b`'s dirty-tree exemption.
 
 ### Added
