@@ -103,12 +103,54 @@ public class MigratedCommandPolicyTests
     public void Git_Checkout_CleanTree_AllowsBranchSwitch()
         => Assert.False(P("git", "checkout").Evaluate(["feature"], Ctx()).IsBlocked);
 
-    [Theory]
-    [InlineData("-b")] // create + switch carries uncommitted changes onto the new branch
-    [InlineData("-B")] // create-or-reset; case-folds to -b and likewise preserves the working tree
-    public void Git_Checkout_DirtyTree_AllowsBranchCreate(string flag)
+    [Fact]
+    public void Git_Checkout_DirtyTree_AllowsBranchCreate()
+        // create + switch carries uncommitted changes onto the new branch
         => Assert.False(P("git", "checkout")
-            .Evaluate([flag, "feature"], Ctx(repo: new FakeRepoProbe { IsCleanTree = false })).IsBlocked);
+            .Evaluate(["-b", "feature"], Ctx(repo: new FakeRepoProbe { IsCleanTree = false })).IsBlocked);
+
+    [Theory]
+    [InlineData("-B", "feature")]           // create-or-reset: drops an existing branch's commits
+    [InlineData("-qB", "feature")]          // ...also when bundled
+    [InlineData("-f", "main")]              // discards uncommitted changes
+    [InlineData("--force", "main")]
+    [InlineData("--forc", "main")]          // git accepts unambiguous long-option prefixes
+    [InlineData("--discard-changes", "main")]
+    [InlineData("-fb", "feature")]          // -f -b: would discard past the -b clean-tree exemption
+    public void Git_Checkout_BlocksWorkDiscardingFlags(string flag, string target)
+        => Assert.True(P("git", "checkout").Evaluate([flag, target], Ctx()).IsBlocked);
+
+    [Theory]
+    [InlineData("--no-verif")]  // abbreviated --no-verify
+    [InlineData("--no-ver")]
+    [InlineData("-an")]         // bundled -a -n
+    [InlineData("-nm")]
+    public void Git_Commit_BlocksSmuggledHookBypass(string flag)
+        => Assert.True(P("git", "commit").Evaluate([flag, "-m", "msg"], Ctx()).IsBlocked);
+
+    [Theory]
+    [InlineData("-am")]
+    [InlineData("--allow-empty")]
+    [InlineData("-S")]
+    public void Git_Commit_AllowsUnrelatedFlags(string flag)
+        => Assert.False(P("git", "commit").Evaluate([flag, "-m", "msg"], Ctx()).IsBlocked);
+
+    [Theory]
+    [InlineData("--forc")]
+    [InlineData("-uf")]
+    [InlineData("--del")]
+    public void Git_Push_BlocksSmuggledForceOrDelete(string flag)
+        => Assert.True(P("git", "push").Evaluate([flag, "origin", "main"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Git_Push_ForceWithLease_StillAllowed()
+        => Assert.False(P("git", "push").Evaluate(["-u", "--force-with-lease", "origin", "feat"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void Git_Checkout_DirtyTree_ExemptionIsCaseSensitive()
+        // Exempting -b must not exempt -B (create-or-reset): exemptions fail open (STRIDE E6).
+        => Assert.True(P("git", "checkout")
+            .Evaluate(["-B", "feature"], Ctx(repo: new FakeRepoProbe { IsCleanTree = false })).IsBlocked);
 
     [Fact]
     public void Git_Checkout_BranchCreate_StillBlocksDot()
@@ -568,17 +610,41 @@ public class MigratedCommandPolicyTests
 
     [Theory]
     [InlineData("pr", "-T")]      // --template: would read a repo file into the body
-    [InlineData("pr", "-t")]      // long form only, so -T stays blocked under case folding
-    [InlineData("pr", "-r")]      // long form only, so -R (--repo) stays blocked
-    [InlineData("pr", "-f")]      // --fill long form only, so -F (--body-file) stays blocked
     [InlineData("issue", "-T")]
-    [InlineData("issue", "-t")]
-    public void Proxy_GhCreate_BlocksCaseFoldedShortFlags(string kind, string flag)
-        // Flag matching folds case (Flag.Base lowercases), so a short flag in the allowlist admits
-        // its uppercase twin. --title/--reviewer are therefore listed long-form only; this test
-        // fails the moment someone "helpfully" adds -t or -r back.
+    public void Proxy_GhCreate_BlocksUppercaseTwinsOfAllowedShortFlags(string kind, string flag)
         => Assert.True(P("proxy", "gh")
             .Evaluate([kind, "create", flag, "x", "--title", "t"], Ctx()).IsBlocked);
+
+    [Theory]
+    [InlineData("pr", "-t")]
+    [InlineData("pr", "-r")]
+    [InlineData("pr", "-f")]
+    [InlineData("issue", "-t")]
+    public void Proxy_GhCreate_AllowsLowercaseShortFlags(string kind, string flag)
+        => Assert.False(P("proxy", "gh")
+            .Evaluate([kind, "create", flag, "x"], Ctx()).IsBlocked);
+
+    [Fact]
+    public void EveryAllowlist_CaseTwinOfAllowedFlag_IsBlockedUnlessAlsoListed()
+    {
+        // Structural guard for STRIDE E6: across every registered subcommand allowlist, swapping the
+        // case of an allowed flag must not be admitted unless that exact spelling is listed too.
+        CommandRegistry.Initialize();
+        var checkedAny = false;
+        foreach (var def in CommandRegistry.Commands)
+        foreach (var rule in def.Policy.Rules.OfType<AllowSubcommandsRule>())
+        foreach (var sub in rule.Subcommands)
+        foreach (var flag in sub.AllowedFlags)
+        {
+            var twin = new string(flag.Select(c => char.IsUpper(c) ? char.ToLowerInvariant(c) : char.ToUpperInvariant(c)).ToArray());
+            if (twin == flag || sub.AllowedFlags.Contains(twin)) continue;
+            string[] args = [.. sub.Prefix.Split(' ', StringSplitOptions.RemoveEmptyEntries), twin];
+            Assert.True(rule.Evaluate(args, Ctx()) is PolicyResult.Block,
+                $"{def.Group} {def.Name} '{sub.Prefix}': '{twin}' admitted via allowed '{flag}'");
+            checkedAny = true;
+        }
+        Assert.True(checkedAny);
+    }
 
     [Theory]
     [InlineData("pr", "--repo")]

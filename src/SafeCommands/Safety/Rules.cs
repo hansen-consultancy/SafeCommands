@@ -50,19 +50,38 @@ abstract record PathArg
     }
 }
 
-/// <summary>Blocks if any arg, normalized via <see cref="Flag.Base"/>, is in the flag set.</summary>
-sealed record BlockFlagsRule(IReadOnlyCollection<string> Flags, string Reason, string? Suggestion) : Rule
+/// <summary>
+/// Blocks if any arg, normalized via <see cref="Flag.Base"/>, is in the flag set — including the two
+/// spellings tools accept that a whole-token match misses:
+/// - bundled short flags: <c>-an</c> is <c>-a -n</c> (git, curl and most getopt-style tools);
+/// - abbreviated long flags: git takes any unambiguous prefix, so <c>--no-verif</c> is <c>--no-verify</c>.
+/// Both widen what blocks, never what passes, so over-matching (e.g. <c>-mnote</c> read as containing
+/// <c>-n</c>) fails safe. <paramref name="CaseSensitive"/> is for flags whose other case is a
+/// different, legitimate flag (git checkout <c>-B</c> vs <c>-b</c>).
+/// </summary>
+sealed record BlockFlagsRule(IReadOnlyCollection<string> Flags, string Reason, string? Suggestion, bool CaseSensitive = false) : Rule
 {
-    private readonly HashSet<string> _flags = Flags.Select(f => f.ToLowerInvariant()).ToHashSet();
+    private readonly HashSet<string> _flags = Flags.Select(f => CaseSensitive ? f : f.ToLowerInvariant()).ToHashSet();
 
     public override PolicyResult Evaluate(string[] args, in SafetyContext ctx)
     {
         foreach (var arg in args)
         {
-            if (_flags.Contains(Flag.Base(arg)))
+            if (Matches(CaseSensitive ? Flag.Name(arg) : Flag.Base(arg)))
                 return new PolicyResult.Block(Reason, Suggestion);
         }
         return new PolicyResult.Allow();
+    }
+
+    private bool Matches(string token)
+    {
+        if (_flags.Contains(token))
+            return true;
+        if (token.Length > 2 && token.StartsWith("--"))
+            return _flags.Any(f => f.StartsWith("--") && f.StartsWith(token));
+        if (token.Length > 2 && token[0] == '-' && token.Skip(1).All(char.IsAsciiLetter))
+            return token.Skip(1).Any(c => _flags.Contains($"-{c}"));
+        return false;
     }
 }
 
@@ -139,7 +158,8 @@ sealed record AllowOnlyFlagsRule(IReadOnlyCollection<string> AllowedFlags, IRead
 
 /// <summary>
 /// Allows only args matching one of the declared subcommand prefixes; under the matched
-/// subcommand, every flag must have its <see cref="Flag.Base"/> in that subcommand's allowed set.
+/// subcommand, every flag must have its <see cref="Flag.Name"/> in that subcommand's allowed set —
+/// case-sensitively, so an allowlisted <c>-r</c> never admits <c>-R</c> (STRIDE E6).
 /// </summary>
 sealed record AllowSubcommandsRule(IReadOnlyList<Subcommand> Subcommands) : Rule
 {
@@ -149,10 +169,10 @@ sealed record AllowSubcommandsRule(IReadOnlyList<Subcommand> Subcommands) : Rule
         {
             if (!PrefixMatches(args, sub.Prefix, out var prefixTokens)) continue;
 
-            var allowedFlags = sub.AllowedFlags.Select(f => f.ToLowerInvariant()).ToHashSet();
+            var allowedFlags = sub.AllowedFlags.ToHashSet(StringComparer.Ordinal);
             for (int i = prefixTokens; i < args.Length; i++)
             {
-                if (args[i].StartsWith('-') && !allowedFlags.Contains(Flag.Base(args[i])))
+                if (args[i].StartsWith('-') && !allowedFlags.Contains(Flag.Name(args[i])))
                     return new PolicyResult.Block(
                         $"Flag '{args[i]}' is not allowed for this subcommand",
                         $"Allowed flags: {string.Join(", ", sub.AllowedFlags)}");
@@ -245,16 +265,16 @@ sealed record RequireGitRepoRule : Rule
 /// — a flag that makes the operation tree-preserving, so the guard would only obstruct it. The
 /// motivating case is <c>git checkout -b &lt;new&gt;</c>: creating a branch carries uncommitted
 /// changes onto it (git refuses rather than discards on conflict), unlike a plain branch <em>switch</em>
-/// which the clean-tree guard exists to protect. Flags match on <see cref="Flag.Base"/>, so the
-/// case-fold also admits <c>-B</c> (create-or-reset), which likewise preserves the working tree.
+/// which the clean-tree guard exists to protect. An exemption fails open, so flags match
+/// case-sensitively on <see cref="Flag.Name"/>: exempting <c>-b</c> does not exempt <c>-B</c> (create-or-reset).
 /// </summary>
 sealed record RequireCleanTreeRule(IReadOnlyCollection<string> ExemptFlags) : Rule
 {
-    private readonly HashSet<string> _exempt = ExemptFlags.Select(f => f.ToLowerInvariant()).ToHashSet();
+    private readonly HashSet<string> _exempt = ExemptFlags.ToHashSet(StringComparer.Ordinal);
 
     public override PolicyResult Evaluate(string[] args, in SafetyContext ctx)
     {
-        if (_exempt.Count > 0 && args.Any(a => _exempt.Contains(Flag.Base(a))))
+        if (_exempt.Count > 0 && args.Any(a => _exempt.Contains(Flag.Name(a))))
             return new PolicyResult.Allow();
         return ctx.Repo.IsCleanTree
             ? new PolicyResult.Allow()

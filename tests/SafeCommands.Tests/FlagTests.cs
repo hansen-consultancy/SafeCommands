@@ -14,4 +14,12 @@ public class FlagTests
     {
         Assert.Equal(expected, Flag.Base(token));
     }
+
+    [Theory]
+    [InlineData("--Force=true", "--Force")]  // strips =value, keeps case
+    [InlineData("-R", "-R")]
+    public void Name_StripsValue_KeepsCase(string token, string expected)
+    {
+        Assert.Equal(expected, Flag.Name(token));
+    }
 }
