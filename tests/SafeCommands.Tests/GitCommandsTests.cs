@@ -235,6 +235,166 @@ public class GitCommandsTests
         Assert.Equal(128, GitCommands.RunPush(ports, []));
     }
 
+    // === branch-delete (multi-step) ===
+
+    private const string Tip = "tip111";
+    private const string TargetTree = "tree222";
+
+    /// <summary>Scripts a repo where `feat` exists at <see cref="Tip"/>, is not ancestry-merged,
+    /// and origin/HEAD is origin/main. <paramref name="overrides"/> answer first.</summary>
+    private static (Ports ports, FakeExecutor exec, FakeRenderer render) BranchDeleteRepo(
+        Func<string[], ExecResult?>? overrides = null, bool jsonMode = false)
+    {
+        var (ports, exec, render) = Setup(jsonMode);
+        exec.Respond = a => overrides?.Invoke(a) ?? (a switch
+        {
+            ["rev-parse", "--verify", "--quiet", "refs/heads/feat"] => new(0, Tip + "\n", ""),
+            ["rev-parse", "--verify", "--quiet", var r] when r.EndsWith("^{tree}") => new(0, TargetTree + "\n", ""),
+            ["branch", "-d", _] => new(1, "", "error: not fully merged"),
+            ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"] => new(0, "origin/main\n", ""),
+            ["rev-parse", "--symbolic-full-name", var t] => new(0, (t.Contains('/') ? "refs/remotes/" : "refs/heads/") + t + "\n", ""),
+            ["merge-tree", ..] => new(0, "otherTree\n", ""),
+            ["merge-base", ..] => new(0, "base333\n", ""),
+            ["commit-tree", ..] => new(0, "probe444\n", ""),
+            ["cherry", ..] => new(0, "+ probe444\n", ""),
+            ["branch", "-D", _] => new(0, "Deleted branch feat (was tip111).\n", ""),
+            _ => null,
+        });
+        return (ports, exec, render);
+    }
+
+    private static bool ForceDeleted(FakeExecutor exec) => exec.Calls.Any(c => c.Args is ["branch", "-D", ..]);
+
+    [Fact]
+    public void RunBranchDelete_AncestryMerged_UsesPlainDashD()
+    {
+        var (ports, exec, _) = BranchDeleteRepo(a => a is ["branch", "-d", "feat"] ? new(0, "Deleted", "") : null);
+        Assert.Equal(0, GitCommands.RunBranchDelete(ports, ["feat"]));
+        Assert.False(ForceDeleted(exec));
+        Assert.DoesNotContain(exec.Calls, c => c.Args is ["merge-tree", ..]);
+    }
+
+    [Fact]
+    public void RunBranchDelete_MergeLeavesTargetTreeUnchanged_ForceDeletes()
+    {
+        var (ports, exec, render) = BranchDeleteRepo(a => a is ["merge-tree", ..] ? new(0, TargetTree + "\n", "") : null);
+        Assert.Equal(0, GitCommands.RunBranchDelete(ports, ["feat"]));
+        Assert.Contains(exec.Calls, c => c.Args.SequenceEqual(new[] { "merge-tree", "--write-tree", "origin/main", Tip }));
+        Assert.True(ForceDeleted(exec));
+        Assert.Contains(render.Infos, m => m.Contains("content-merged"));
+    }
+
+    [Fact]
+    public void RunBranchDelete_MergeTreeConflict_EvenWithMatchingTree_IsNotProof()
+    {
+        // merge-tree prints a tree on conflict too (exit 1); only exit 0 counts.
+        var (ports, exec, _) = BranchDeleteRepo(a => a is ["merge-tree", ..] ? new(1, TargetTree + "\n", "") : null);
+        Assert.Equal(1, GitCommands.RunBranchDelete(ports, ["feat"]));
+        Assert.False(ForceDeleted(exec));
+    }
+
+    [Fact]
+    public void RunBranchDelete_SquashPatchOnTarget_ForceDeletes()
+    {
+        var (ports, exec, render) = BranchDeleteRepo(a => a is ["cherry", ..] ? new(0, "- probe444\n", "") : null, jsonMode: true);
+        Assert.Equal(0, GitCommands.RunBranchDelete(ports, ["feat"]));
+        Assert.Contains(exec.Calls, c => c.Args.SequenceEqual(new[] { "commit-tree", Tip + "^{tree}", "-p", "base333", "-m", "safe git branch-delete probe" }));
+        Assert.Contains(exec.Calls, c => c.Args.SequenceEqual(new[] { "cherry", "origin/main", "probe444" }));
+        Assert.True(ForceDeleted(exec));
+        var json = AsJson(Assert.Single(render.JsonPayloads));
+        Assert.Equal("squash-merged", json.GetProperty("method").GetString());
+        Assert.Equal("origin/main", json.GetProperty("into").GetString());
+    }
+
+    [Fact]
+    public void RunBranchDelete_UnmergedChanges_BlocksWithoutDeleting()
+    {
+        var (ports, exec, render) = BranchDeleteRepo();
+        Assert.Equal(1, GitCommands.RunBranchDelete(ports, ["feat"]));
+        Assert.False(ForceDeleted(exec));
+        Assert.Contains("could lose work", Assert.Single(render.Blocks).Reason);
+    }
+
+    [Theory]
+    [InlineData("merge-base")]
+    [InlineData("commit-tree")]
+    [InlineData("cherry")]
+    public void RunBranchDelete_ProbeFailure_FailsClosed(string failing)
+    {
+        var (ports, exec, _) = BranchDeleteRepo(a => a[0] == failing ? new(128, "- probe444\n", "fatal") : null);
+        Assert.Equal(1, GitCommands.RunBranchDelete(ports, ["feat"]));
+        Assert.False(ForceDeleted(exec));
+    }
+
+    [Fact]
+    public void RunBranchDelete_UsesIntoInsteadOfOriginHead()
+    {
+        var (ports, exec, _) = BranchDeleteRepo(a => a is ["merge-tree", ..] ? new(0, TargetTree, "") : null);
+        GitCommands.RunBranchDelete(ports, ["feat", "--into", "develop"]);
+        Assert.DoesNotContain(exec.Calls, c => c.Args is ["symbolic-ref", ..]);
+        Assert.Contains(exec.Calls, c => c.Args.SequenceEqual(new[] { "merge-tree", "--write-tree", "develop", Tip }));
+    }
+
+    [Fact]
+    public void RunBranchDelete_NoOriginHeadAndNoInto_Blocks()
+    {
+        var (ports, exec, render) = BranchDeleteRepo(a => a is ["symbolic-ref", ..] ? new(1, "", "") : null);
+        Assert.Equal(1, GitCommands.RunBranchDelete(ports, ["feat"]));
+        Assert.False(ForceDeleted(exec));
+        Assert.Contains("--into", Assert.Single(render.Blocks).Suggestion);
+    }
+
+    [Theory]
+    [InlineData("refs/heads/feat\n")] // --into feat, or --into HEAD while on feat
+    [InlineData("\n")]                // raw hash / expression: nothing survives the delete
+    [InlineData("refs/stash\n")]
+    public void RunBranchDelete_TargetNotASurvivingBranchOrTag_Blocks(string symbolic)
+    {
+        var (ports, exec, render) = BranchDeleteRepo(a => a switch
+        {
+            ["rev-parse", "--symbolic-full-name", _] => new(0, symbolic, ""),
+            ["merge-tree", ..] => new(0, TargetTree, ""),
+            _ => null,
+        });
+        Assert.Equal(1, GitCommands.RunBranchDelete(ports, ["feat", "--into", "x"]));
+        Assert.False(ForceDeleted(exec));
+        Assert.DoesNotContain(exec.Calls, c => c.Args is ["merge-tree", ..]);
+        Assert.Contains("other than 'feat'", Assert.Single(render.Blocks).Reason);
+    }
+
+    [Fact]
+    public void RunBranchDelete_FlagLikeTarget_Blocks()
+    {
+        var (ports, exec, render) = BranchDeleteRepo();
+        Assert.Equal(1, GitCommands.RunBranchDelete(ports, ["feat", "--into", "--output=x"]));
+        Assert.Empty(exec.Calls);
+        Assert.Single(render.Blocks);
+    }
+
+    [Fact]
+    public void RunBranchDelete_MissingBranch_Errors()
+    {
+        var (ports, exec, render) = BranchDeleteRepo(a => a is ["rev-parse", _, _, "refs/heads/feat"] ? new(1, "", "") : null);
+        Assert.Equal(1, GitCommands.RunBranchDelete(ports, ["feat"]));
+        Assert.Single(exec.Calls);
+        Assert.Contains("No local branch", Assert.Single(render.Errors));
+    }
+
+    [Fact]
+    public void RunBranchDelete_TipMovedDuringCheck_DoesNotDelete()
+    {
+        var tipReads = 0;
+        var (ports, exec, render) = BranchDeleteRepo(a => a switch
+        {
+            ["rev-parse", _, _, "refs/heads/feat"] => new(0, ++tipReads == 1 ? Tip : "newer555", ""),
+            ["merge-tree", ..] => new(0, TargetTree, ""),
+            _ => null,
+        });
+        Assert.Equal(1, GitCommands.RunBranchDelete(ports, ["feat"]));
+        Assert.False(ForceDeleted(exec));
+        Assert.Contains("moved", Assert.Single(render.Blocks).Reason);
+    }
+
     // --- helpers ---
 
     private static void AssertArgs(Func<Ports, string[], int> handler, string[] input, params string[] expected)

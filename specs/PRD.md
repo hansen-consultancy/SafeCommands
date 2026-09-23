@@ -373,7 +373,7 @@ prevent every category of incident found.
 | DB migrations with `--force` (6+ incidents) | 60+ production tables dropped via `drizzle-kit push --force` | `safe db` blocks all `--force`/`--force-reset`/`--accept-data-loss` flags |
 | `git push --force` (3+ incidents) | Contributor's commit history rewritten | `safe git push` blocks `--force` (allows `--force-with-lease`) |
 | `terraform destroy` (2+ incidents) | 2.5 years of production data wiped | `terraform destroy` not in proxy allowlist |
-| `git branch -D` (2+ incidents) | Only copy of work deleted | Only `safe git branch` (list) and `branch-create` available |
+| `git branch -D` (2+ incidents) | Only copy of work deleted | `safe git branch-delete` force-deletes only after proving the branch's changes are already in the target (ancestry, no-op merge, or squash patch-equivalence) |
 | `--no-verify` bypassing hooks (2+ incidents) | Pre-commit safety hooks bypassed | `safe git commit` blocks `--no-verify` |
 | `npm audit fix --force` (1+ incidents) | Breaking major version changes | `safe npm audit-fix` blocks `--force` |
 | `git commit --amend` after push (2+ incidents) | Diverged history requiring force push | `safe git commit-amend` blocks if HEAD already pushed |

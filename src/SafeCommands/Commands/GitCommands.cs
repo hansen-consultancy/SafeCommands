@@ -78,6 +78,8 @@ static class GitCommands
                 { Policy = Policy.Default.RequireGitRepo().RequireCleanTree(), MinArgs = 1 },
             new("git", "cherry-pick", "Cherry-pick a single commit", "safe git cherry-pick <hash>", SafetyLevel.CheckedWrite, RunCherryPick)
                 { Policy = Policy.Default.RequireGitRepo(), MinArgs = 1 },
+            new("git", "branch-delete", "Delete a local branch whose changes are already in the target (squash merges ok)", "safe git branch-delete <name> [--into <target>]", SafetyLevel.CheckedWrite, RunBranchDelete)
+                { Policy = Policy.Default.RequireGitRepo().AllowOnlyFlags(["--into"], ["--into"], keepPositionals: true), MinArgs = 1 },
         ]);
     }
 
@@ -192,4 +194,120 @@ static class GitCommands
     internal static int RunMerge(Ports p, string[] args) => RunGit(p, ["merge", args[0]]);
 
     internal static int RunCherryPick(Ports p, string[] args) => RunGit(p, ["cherry-pick", args[0]]);
+
+    private const string BranchDeleteLabel = "git branch-delete";
+
+    /// <summary>
+    /// Deletes a local branch only when nothing on it would be lost. Plain <c>git branch -d</c> only
+    /// recognizes commit ancestry, so it refuses squash-merged branches; this falls back to content
+    /// checks against the target (default <c>origin/HEAD</c>) and force-deletes only when one proves
+    /// the branch's changes are already there:
+    /// 1. merging the branch into the target would leave the target's tree unchanged, or
+    /// 2. the branch's net diff, squashed into one commit, has a patch-equivalent commit on the target
+    ///    (covers the target having edited the same lines again after the squash landed).
+    /// Both checks fail closed: conflicts, errors or a stale target mean "not proven", never "delete".
+    /// </summary>
+    internal static int RunBranchDelete(Ports p, string[] args)
+    {
+        var name = Args.Positionals(args, "--into").FirstOrDefault();
+        var into = Args.Value(args, "--into");
+        if (name is null)
+        {
+            p.Render.Error("Usage: safe git branch-delete <name> [--into <target>]");
+            return 1;
+        }
+        if (into is { } i && i.StartsWith('-'))
+        {
+            p.Render.Blocked(BranchDeleteLabel, $"Invalid target '{into}'", "safe git branch-delete <name> --into <branch>");
+            return 1;
+        }
+
+        var tip = Git(p, "rev-parse", "--verify", "--quiet", $"refs/heads/{name}");
+        if (tip is null)
+        {
+            p.Render.Error($"No local branch named '{name}'");
+            return 1;
+        }
+
+        var merged = p.Exec.Run("git", ["branch", "-d", name]);
+        if (merged.ExitCode == 0)
+            return ReportBranchDeleted(p, merged, name, null, "merged"); // -d checks HEAD/upstream, not --into
+
+        into ??= Git(p, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD");
+        if (into is null)
+        {
+            p.Render.Blocked(BranchDeleteLabel, $"'{name}' is not merged into HEAD and no default target is known (origin/HEAD is unset)",
+                $"safe git branch-delete {name} --into <branch>");
+            return 1;
+        }
+
+        // The proof must point at a ref that survives the delete: `--into feat`, `--into HEAD` (while on
+        // feat) or a raw hash would "prove" the branch against itself and amount to a bare -D.
+        var targetRef = Git(p, "rev-parse", "--symbolic-full-name", into);
+        if (targetRef is null || targetRef == $"refs/heads/{name}" || !(targetRef.StartsWith("refs/heads/") || targetRef.StartsWith("refs/remotes/") || targetRef.StartsWith("refs/tags/")))
+        {
+            p.Render.Blocked(BranchDeleteLabel, $"Target '{into}' must be a branch or tag other than '{name}'",
+                $"safe git branch-delete {name} --into <branch>");
+            return 1;
+        }
+
+        var method = ChangesAlreadyIn(p, tip, into);
+        if (method is null)
+        {
+            p.Render.Blocked(BranchDeleteLabel, $"'{name}' has changes that are not in '{into}' - deleting it could lose work",
+                $"Run 'safe git fetch' if '{into}' may be stale, or inspect with: safe git log {into}..{name}");
+            return 1;
+        }
+
+        // Re-check the tip right before deleting so a commit landing mid-check is not discarded unchecked.
+        if (Git(p, "rev-parse", "--verify", "--quiet", $"refs/heads/{name}") != tip)
+        {
+            p.Render.Blocked(BranchDeleteLabel, $"'{name}' moved while it was being checked", $"Retry: safe git branch-delete {name}");
+            return 1;
+        }
+        return ReportBranchDeleted(p, p.Exec.Run("git", ["branch", "-D", name]), name, into, method);
+    }
+
+    /// <summary>Which check proved <paramref name="tip"/>'s changes are in <paramref name="target"/>, or null.</summary>
+    private static string? ChangesAlreadyIn(Ports p, string tip, string target)
+    {
+        var targetTree = Git(p, "rev-parse", "--verify", "--quiet", $"{target}^{{tree}}");
+        if (targetTree is null)
+            return null;
+
+        // Exit 1 = conflicts; the first output line is the merged tree either way, so check the exit code.
+        var mergedTree = p.Exec.Run("git", ["merge-tree", "--write-tree", target, tip]);
+        if (mergedTree.ExitCode == 0 && FirstLine(mergedTree.StdOut) == targetTree)
+            return "content-merged";
+
+        var mergeBase = Git(p, "merge-base", target, tip);
+        if (mergeBase is null)
+            return null;
+        var squashed = Git(p, "commit-tree", $"{tip}^{{tree}}", "-p", mergeBase, "-m", "safe git branch-delete probe");
+        if (squashed is null)
+            return null;
+        var cherry = p.Exec.Run("git", ["cherry", target, squashed]);
+        return cherry.ExitCode == 0 && FirstLine(cherry.StdOut).StartsWith("- ") ? "squash-merged" : null;
+    }
+
+    private static int ReportBranchDeleted(Ports p, ExecResult r, string name, string? into, string method)
+    {
+        if (p.Render.JsonMode && r.ExitCode == 0)
+            p.Render.Json(new { branch = name, deleted = true, into, method });
+        else
+            p.Render.Result(r);
+        if (r.ExitCode == 0 && into is not null)
+            p.Render.Info($"All changes on '{name}' are already in '{into}' ({method})");
+        return r.ExitCode;
+    }
+
+    /// <summary>Trimmed first stdout line of a successful git call, or null on failure/empty output.</summary>
+    private static string? Git(Ports p, params string[] args)
+    {
+        var r = p.Exec.Run("git", args);
+        var line = FirstLine(r.StdOut);
+        return r.ExitCode == 0 && line.Length > 0 ? line : null;
+    }
+
+    private static string FirstLine(string s) => s.Split('\n', 2)[0].Trim();
 }

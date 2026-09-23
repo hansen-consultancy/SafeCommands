@@ -5,7 +5,7 @@
 [![NuGet version](https://img.shields.io/nuget/v/HC.SafeCommands.svg)](https://www.nuget.org/packages/HC.SafeCommands/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-A safe command gateway CLI for AI coding agents. Provides **161 pre-validated commands** across 12 groups so agents can be allowlisted on `safe` without per-command approval overhead.
+A safe command gateway CLI for AI coding agents. Provides **162 pre-validated commands** across 12 groups so agents can be allowlisted on `safe` without per-command approval overhead.
 
 ## Why?
 
@@ -53,7 +53,7 @@ safe help git                 # Show all git commands with safety levels
 
 | Group | Commands | Description |
 |-------|----------|-------------|
-| **git** | 27 | Git with safety checks (no force push, no hard reset, clean tree required to switch branches — `checkout -b` exempt) |
+| **git** | 28 | Git with safety checks (no force push, no hard reset, clean tree required to switch branches — `checkout -b` exempt) |
 | **file** | 15 | File operations (read, count, delete only tracked files or temp/build dirs) |
 | **process** | 5 | Process management (kill limited to dev tooling only) |
 | **docker** | 18 | Docker & Compose (no volume removal, no system prune) |
@@ -88,7 +88,7 @@ Based on real-world incident research, SafeCommands explicitly prevents:
 | `git add .` / `git add -A` | May stage secrets or unwanted files | `safe git add <file>` or `safe git add-tracked` |
 | `git commit --no-verify` | Bypasses safety hooks | Fix the hook issue instead |
 | `git commit --amend` (if pushed) | Creates diverged history | `safe git commit-amend` (blocks if pushed) |
-| `git branch -D` | Deletes potentially only copy | Not available |
+| `git branch -D` | Deletes potentially only copy | `safe git branch-delete <name>` (deletes only if its changes are already in `origin/HEAD` or `--into`; squash merges ok) |
 | `rm -rf` (arbitrary) | Can expand beyond target | `safe file delete-temp` / `safe file delete-tracked` |
 | `terraform destroy` / `apply` | Wiped production infrastructure | `safe proxy terraform plan` (read-only) |
 | `prisma db push --force-reset` | Drops all tables | `safe db prisma-migrate-dev` (no force flags) |

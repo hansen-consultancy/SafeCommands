@@ -146,6 +146,14 @@ public class MigratedCommandPolicyTests
         => Assert.False(P("git", "commit-amend").Evaluate([], Ctx()).IsBlocked);
 
     [Fact]
+    public void Git_BranchDelete_DropsForceFlags_KeepsNameAndInto()
+    {
+        // The handler decides when to force-delete; a caller-supplied -D/--force must never reach it.
+        var d = P("git", "branch-delete").Evaluate(["-D", "feat", "--force", "--into", "develop", "-f"], Ctx());
+        Assert.Equal(new[] { "feat", "--into", "develop" }, d.SafeArgs);
+    }
+
+    [Fact]
     public void Git_RequireGitRepo_NotARepo_Blocks()
     {
         var block = P("git", "status")
