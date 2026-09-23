@@ -23,6 +23,8 @@ These aren't theoretical risks. Research across 70+ documented incidents from Cl
 
 ## Installation
 
+Requires the [.NET 10 runtime](https://dotnet.microsoft.com/download/dotnet/10.0) (SafeCommands 2.0+).
+
 ```bash
 dotnet tool install --global HC.SafeCommands
 ```
