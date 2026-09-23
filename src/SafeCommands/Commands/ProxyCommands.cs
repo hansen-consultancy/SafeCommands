@@ -43,17 +43,11 @@ static class ProxyCommands
             // the git policy never sees, accepted because `safe git push` is already allowed.
             // BLOCKED: pr merge, pr close, issue close — those act on others' work.
             //
-            // Long forms only for --title and --reviewer: flag matching folds case (Flag.Base
-            // lowercases), so listing "-t" would also admit "-T" (--template) and "-r" would also
-            // admit "-R" (--repo) — the two omissions above. Every short flag that IS listed was
-            // checked against `gh pr create --help`: "-b" admits "-B" (--base, allowed anyway),
-            // "-H" admits "-h" (--help, harmless), and "-d"/"-a"/"-l" have no uppercase twin in
-            // gh's flag table for these subcommands (`-D`/`--delete-branch` belongs to `pr merge`,
-            // which is blocked outright). Adding a short flag here means re-running that check —
-            // keep gh's case-distinguished pairs out unless BOTH cases are intended.
-            new("pr create", ["--title", "--body", "-b", "--base", "--head", "-H",
-                "--draft", "-d", "--fill", "--assignee", "-a", "--label", "-l", "--reviewer"]),
-            new("issue create", ["--title", "--body", "-b", "--assignee", "-a", "--label", "-l"]),
+            // Allowlist flags match case-sensitively (STRIDE E6), so "-t"/"-r" admit only
+            // --title/--reviewer, never their uppercase twins "-T" (--template) / "-R" (--repo).
+            new("pr create", ["--title", "-t", "--body", "-b", "--base", "-B", "--head", "-H",
+                "--draft", "-d", "--fill", "-f", "--assignee", "-a", "--label", "-l", "--reviewer", "-r"]),
+            new("issue create", ["--title", "-t", "--body", "-b", "--assignee", "-a", "--label", "-l"]),
             new("issue list", ["--state", "--label", "--author", "--limit", "--json", "--search", "--assignee"]),
             new("issue view", ["--json", "--web"]),
             new("issue status", []),
