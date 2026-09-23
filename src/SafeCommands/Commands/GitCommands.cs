@@ -210,8 +210,11 @@ static class GitCommands
     internal static int RunBranchDelete(Ports p, string[] args)
     {
         var name = Args.Positionals(args, "--into").FirstOrDefault();
-        var into = Args.Value(args, "--into");
-        if (name is null)
+        // Accept `--into=x` too; a bare trailing `--into` must not silently fall back to origin/HEAD.
+        var into = Args.Value(args, "--into")
+            ?? args.FirstOrDefault(a => a.StartsWith("--into=", StringComparison.OrdinalIgnoreCase))?["--into=".Length..];
+        var intoMissingValue = into is "" || (into is null && Args.HasFlag(args, "--into"));
+        if (name is null || intoMissingValue)
         {
             p.Render.Error("Usage: safe git branch-delete <name> [--into <target>]");
             return 1;

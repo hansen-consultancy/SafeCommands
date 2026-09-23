@@ -336,6 +336,25 @@ public class GitCommandsTests
     }
 
     [Fact]
+    public void RunBranchDelete_IntoEqualsForm_IsHonored()
+    {
+        var (ports, exec, _) = BranchDeleteRepo(a => a is ["merge-tree", ..] ? new(0, TargetTree, "") : null);
+        GitCommands.RunBranchDelete(ports, ["feat", "--into=develop"]);
+        Assert.Contains(exec.Calls, c => c.Args.SequenceEqual(new[] { "merge-tree", "--write-tree", "develop", Tip }));
+    }
+
+    [Theory]
+    [InlineData("--into")]
+    [InlineData("--into=")]
+    public void RunBranchDelete_IntoWithoutValue_ErrorsInsteadOfDefaulting(string flag)
+    {
+        var (ports, exec, render) = BranchDeleteRepo();
+        Assert.Equal(1, GitCommands.RunBranchDelete(ports, ["feat", flag]));
+        Assert.Empty(exec.Calls);
+        Assert.Contains("Usage", Assert.Single(render.Errors));
+    }
+
+    [Fact]
     public void RunBranchDelete_NoOriginHeadAndNoInto_Blocks()
     {
         var (ports, exec, render) = BranchDeleteRepo(a => a is ["symbolic-ref", ..] ? new(1, "", "") : null);
