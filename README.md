@@ -84,6 +84,7 @@ Based on real-world incident research, SafeCommands explicitly prevents:
 |-----------------|--------|-----------------|
 | `git reset --hard` | #1 cause of data loss in AI agents | Not available |
 | `git checkout .` | Destroys all uncommitted changes | `safe git checkout-file <specific-file>` |
+| `git checkout -f` / `-B` | Discards uncommitted changes / resets a branch, dropping its commits | Blocked; `safe git checkout -b <new>` to create |
 | `git push --force` | Rewrites remote history | `safe git push --force-with-lease` |
 | `git add .` / `git add -A` | May stage secrets or unwanted files | `safe git add <file>` or `safe git add-tracked` |
 | `git commit --no-verify` | Bypasses safety hooks | Fix the hook issue instead |

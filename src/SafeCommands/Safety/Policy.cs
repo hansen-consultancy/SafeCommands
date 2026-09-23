@@ -45,8 +45,8 @@ sealed record Policy(IReadOnlyList<Rule> Rules)
 {
     public static Policy Default { get; } = new([]);
 
-    public Policy BlockFlags(IReadOnlyCollection<string> flags, string reason, string suggestion)
-        => this with { Rules = [.. Rules, new BlockFlagsRule(flags, reason, suggestion)] };
+    public Policy BlockFlags(IReadOnlyCollection<string> flags, string reason, string suggestion, bool caseSensitive = false)
+        => this with { Rules = [.. Rules, new BlockFlagsRule(flags, reason, suggestion, caseSensitive)] };
 
     public Policy BlockSubstrings(IReadOnlyCollection<string> needles, string reason, string suggestion)
         => this with { Rules = [.. Rules, new BlockSubstringsRule(needles, reason, suggestion)] };

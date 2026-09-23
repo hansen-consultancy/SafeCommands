@@ -13,6 +13,10 @@ static class GitCommands
     private static readonly HashSet<string> GitValueFlags = ["-n", "--format", "--pretty", "--author", "--since", "--until", "--date", "--diff-filter", "--unified", "-U"];
     private static readonly HashSet<string> PushBlockedFlags = ["--force", "-f", "--delete", "--no-verify"];
     private static readonly HashSet<string> AddBlockedArgs = ["-A", "--all", "."];
+    // -f/--force/--discard-changes throw away uncommitted work, and `-f -b x` would do so past the
+    // clean-tree guard (-b is exempt). -B is create-OR-RESET: on an existing branch it drops that
+    // branch's commits. Case-sensitive, since lowercase -b (create) is the legitimate twin.
+    private static readonly HashSet<string> CheckoutDiscardFlags = ["-f", "--force", "--discard-changes"];
 
     public static void Register(List<CommandDefinition> commands)
     {
@@ -71,7 +75,11 @@ static class GitCommands
             new("git", "push", "Push to remote (--force-with-lease ok, --force blocked)", "safe git push [<remote>] [<branch>] [--force-with-lease]", SafetyLevel.CheckedWrite, RunPush)
                 { Policy = Policy.Default.RequireGitRepo().BlockFlags(PushBlockedFlags, "Force push and delete are not allowed", "safe git push (without --force)") },
             new("git", "checkout", "Switch branch (requires clean tree; -b creates a new branch and is exempt)", "safe git checkout [-b] <branch>", SafetyLevel.CheckedWrite, RunCheckout)
-                { Policy = Policy.Default.RequireGitRepo().BlockFlags(["."], "Discarding all changes is not allowed", "safe git checkout-file <specific-file> to restore individual files").RequireCleanTree(exemptFlags: ["-b"]), MinArgs = 1 },
+                { Policy = Policy.Default.RequireGitRepo()
+                    .BlockFlags(["."], "Discarding all changes is not allowed", "safe git checkout-file <specific-file> to restore individual files")
+                    .BlockFlags(CheckoutDiscardFlags, "Forced checkout discards uncommitted changes", "Commit or stash first: safe git stash")
+                    .BlockFlags(["-B"], "-B resets an existing branch, discarding its commits", "safe git checkout -b <new-branch> (create only)", caseSensitive: true)
+                    .RequireCleanTree(exemptFlags: ["-b"]), MinArgs = 1 },
             new("git", "checkout-file", "Restore a specific file from HEAD", "safe git checkout-file <file>", SafetyLevel.CheckedWrite, RunCheckoutFile)
                 { Policy = Policy.Default.RequireGitRepo().BlockFlags([".", "*"], "Discarding all changes is not allowed", "Specify individual files: safe git checkout-file <file>"), MinArgs = 1 },
             new("git", "merge", "Merge branch (requires clean tree)", "safe git merge <branch>", SafetyLevel.CheckedWrite, RunMerge)

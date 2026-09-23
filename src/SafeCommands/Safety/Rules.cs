@@ -50,19 +50,38 @@ abstract record PathArg
     }
 }
 
-/// <summary>Blocks if any arg, normalized via <see cref="Flag.Base"/>, is in the flag set.</summary>
-sealed record BlockFlagsRule(IReadOnlyCollection<string> Flags, string Reason, string? Suggestion) : Rule
+/// <summary>
+/// Blocks if any arg, normalized via <see cref="Flag.Base"/>, is in the flag set — including the two
+/// spellings tools accept that a whole-token match misses:
+/// - bundled short flags: <c>-an</c> is <c>-a -n</c> (git, curl and most getopt-style tools);
+/// - abbreviated long flags: git takes any unambiguous prefix, so <c>--no-verif</c> is <c>--no-verify</c>.
+/// Both widen what blocks, never what passes, so over-matching (e.g. <c>-mnote</c> read as containing
+/// <c>-n</c>) fails safe. <paramref name="CaseSensitive"/> is for flags whose other case is a
+/// different, legitimate flag (git checkout <c>-B</c> vs <c>-b</c>).
+/// </summary>
+sealed record BlockFlagsRule(IReadOnlyCollection<string> Flags, string Reason, string? Suggestion, bool CaseSensitive = false) : Rule
 {
-    private readonly HashSet<string> _flags = Flags.Select(f => f.ToLowerInvariant()).ToHashSet();
+    private readonly HashSet<string> _flags = Flags.Select(f => CaseSensitive ? f : f.ToLowerInvariant()).ToHashSet();
 
     public override PolicyResult Evaluate(string[] args, in SafetyContext ctx)
     {
         foreach (var arg in args)
         {
-            if (_flags.Contains(Flag.Base(arg)))
+            if (Matches(CaseSensitive ? Flag.Name(arg) : Flag.Base(arg)))
                 return new PolicyResult.Block(Reason, Suggestion);
         }
         return new PolicyResult.Allow();
+    }
+
+    private bool Matches(string token)
+    {
+        if (_flags.Contains(token))
+            return true;
+        if (token.Length > 2 && token.StartsWith("--"))
+            return _flags.Any(f => f.StartsWith("--") && f.StartsWith(token));
+        if (token.Length > 2 && token[0] == '-' && token.Skip(1).All(char.IsAsciiLetter))
+            return token.Skip(1).Any(c => _flags.Contains($"-{c}"));
+        return false;
     }
 }
 
