@@ -26,10 +26,11 @@ static class ProcessRunner
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
 
+        // '\n' rather than AppendLine: Environment.NewLine would put '\r' back on every line on Windows.
         if (captureOutput)
         {
-            process.OutputDataReceived += (_, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
-            process.ErrorDataReceived += (_, e) => { if (e.Data != null) stderr.AppendLine(e.Data); };
+            process.OutputDataReceived += (_, e) => { if (e.Data != null) stdout.Append(e.Data).Append('\n'); };
+            process.ErrorDataReceived += (_, e) => { if (e.Data != null) stderr.Append(e.Data).Append('\n'); };
         }
 
         process.Start();

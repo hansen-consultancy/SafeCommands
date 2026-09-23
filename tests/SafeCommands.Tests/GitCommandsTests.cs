@@ -51,6 +51,21 @@ public class GitCommandsTests
     }
 
     [Fact]
+    public void RunStatus_JsonMode_CrlfOutput_LeavesNoCarriageReturns()
+    {
+        var (ports, exec, render) = Setup(jsonMode: true);
+        exec.NextResult = new ExecResult(0, "## chore/net10\r\n M src/a.cs\r\n?? b.txt\r\n", "");
+        GitCommands.RunStatus(ports, []);
+
+        var json = AsJson(Assert.Single(render.JsonPayloads));
+        Assert.Equal("chore/net10", json.GetProperty("branch").GetString());
+        var files = json.GetProperty("files");
+        Assert.Equal(2, files.GetArrayLength());
+        Assert.Equal("src/a.cs", files[0].GetProperty("file").GetString());
+        Assert.Equal("b.txt", files[1].GetProperty("file").GetString());
+    }
+
+    [Fact]
     public void RunStatus_JsonMode_NoChanges_IsClean()
     {
         var (ports, exec, render) = Setup(jsonMode: true);
@@ -104,6 +119,19 @@ public class GitCommandsTests
         Assert.True(branches[0].GetProperty("current").GetBoolean());
         Assert.Equal("feature", branches[1].GetProperty("name").GetString());
         Assert.False(branches[1].GetProperty("current").GetBoolean());
+    }
+
+    [Fact]
+    public void RunBranch_JsonMode_CrlfOutput_LeavesNoCarriageReturns()
+    {
+        var (ports, exec, render) = Setup(jsonMode: true);
+        exec.NextResult = new ExecResult(0, "* chore/net10\r\n  main\r\n", "");
+        GitCommands.RunBranch(ports, []);
+
+        var branches = AsJson(Assert.Single(render.JsonPayloads)).GetProperty("branches");
+        Assert.Equal(2, branches.GetArrayLength());
+        Assert.Equal("chore/net10", branches[0].GetProperty("name").GetString());
+        Assert.Equal("main", branches[1].GetProperty("name").GetString());
     }
 
     // === passthrough handlers (args splat) ===

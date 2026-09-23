@@ -100,7 +100,7 @@ static class GitCommands
         if (p.Render.JsonMode)
         {
             var r = p.Exec.Run("git", ["status", "--porcelain", "-b"]);
-            var lines = r.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            var lines = r.StdOutLines;
             var branch = lines.Length > 0 ? lines[0].TrimStart('#', ' ') : "unknown";
             var files = lines.Skip(1).Select(l => new { status = l[..2].Trim(), file = l[3..] }).ToArray();
             p.Render.Json(new { branch, clean = files.Length == 0, files });
@@ -120,7 +120,7 @@ static class GitCommands
         if (p.Render.JsonMode)
         {
             var r = p.Exec.Run("git", ["branch", "--list", "--no-color"]);
-            var branches = r.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            var branches = r.StdOutLines
                 .Select(b => new { name = b.TrimStart('*', ' '), current = b.StartsWith('*') })
                 .ToArray();
             p.Render.Json(new { branches });

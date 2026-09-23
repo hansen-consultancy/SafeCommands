@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`--json` output no longer carries trailing `\r` on Windows** (e.g. `safe git status --json` gave `"branch": "chore/net10\r"`). The process runner joined captured lines with `Environment.NewLine` (`\r\n` on Windows) while JSON handlers split on `\n`. Captured output is now always LF-joined, and `safe git status`/`branch` JSON parse lines via a shared CRLF-tolerant `ExecResult.StdOutLines`.
+
 ## [2.0.0] - 2026-09-23
 
 A major version for one reason: the tool now targets .NET 10, so installing or updating it requires the .NET 10 runtime (.NET 8 reaches end of support in November 2026). Alongside that, squash-merged branches can be cleaned up without raw `git branch -D`, and a safety review closed three ways around the existing blocklists — including a pre-commit-hook bypass.
