@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Now targets .NET 10 (LTS)**; .NET 8 reaches end of support in November 2026. Installing or updating the tool now requires the .NET 10 runtime. The explicit `System.Text.Json` 8.0.6 reference is dropped — it ships in-box with .NET 10. CI and publish workflows build with the 10.0 SDK.
+
 ### Security
 - **Blocklists catch bundled and abbreviated flags.** Blocked flags were matched as whole tokens, so `safe git commit -an -m x` (bundled `-a -n`) and `--no-verif` (git accepts unambiguous long-option prefixes) skipped pre-commit hooks, and `push --forc`/`-uf` got past the force-push block. `BlockFlags` now expands all-letter short-flag bundles and treats a prefix of a blocked long flag as that flag (STRIDE T2, T3). Only widens what blocks; `--force-with-lease` still works.
 - **`safe git checkout` blocks `-B`, `-f`, `--force` and `--discard-changes`.** `-B` on an existing branch reset it and dropped its commits; `-f` discarded uncommitted changes, and `-f -b <new>` did so past the clean-tree check (STRIDE T7). `-b` (create) is unaffected.
