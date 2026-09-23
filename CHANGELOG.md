@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Now targets .NET 10 (LTS)**; .NET 8 reaches end of support in November 2026. Installing or updating the tool now requires the .NET 10 runtime. The explicit `System.Text.Json` 8.0.6 reference is dropped — it ships in-box with .NET 10. CI and publish workflows build with the 10.0 SDK.
+
 ### Added
 - **`safe git branch-delete <name> [--into <target>]`**. Deletes a local branch only when nothing on it would be lost, so squash-merged PR branches (which plain `git branch -d` refuses as "not fully merged") can be cleaned up without the agent falling back to raw `git branch -D`. Tries `git branch -d` first; otherwise checks against `--into` (default `origin/HEAD`) and force-deletes only when (1) `git merge-tree --write-tree` shows merging the branch would leave the target's tree unchanged, or (2) the branch's net diff, squashed into a probe commit, has a patch-equivalent commit on the target (`git cherry`) — which covers the target editing the same lines again after the squash. The target must be a branch or tag other than the one being deleted (so `--into <self>`/`HEAD`/a hash can't "prove" it against itself). Fails closed on conflicts, probe errors, an unknown target or a branch tip that moves mid-check. Caller-supplied `-D`/`--force` are dropped by policy. `--into=<target>` is accepted; an `--into` with no value is a usage error rather than a silent fall-back to `origin/HEAD`. Requires git 2.38+ (`merge-tree --write-tree`).
 

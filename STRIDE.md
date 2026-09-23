@@ -4,7 +4,7 @@
 
 ### Application Description
 
-SafeCommands is a .NET 8 CLI tool (`safe`) that acts as a safe command gateway for AI coding agents. It provides 162 pre-validated commands across 12 groups, allowing AI agents to execute CLI operations without per-command user approval. The tool runs as a NuGet global tool on the developer's workstation.
+SafeCommands is a .NET 10 CLI tool (`safe`) that acts as a safe command gateway for AI coding agents. It provides 162 pre-validated commands across 12 groups, allowing AI agents to execute CLI operations without per-command user approval. The tool runs as a NuGet global tool on the developer's workstation.
 
 ### User Types
 
