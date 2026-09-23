@@ -139,7 +139,8 @@ sealed record AllowOnlyFlagsRule(IReadOnlyCollection<string> AllowedFlags, IRead
 
 /// <summary>
 /// Allows only args matching one of the declared subcommand prefixes; under the matched
-/// subcommand, every flag must have its <see cref="Flag.Base"/> in that subcommand's allowed set.
+/// subcommand, every flag must have its <see cref="Flag.Name"/> in that subcommand's allowed set —
+/// case-sensitively, so an allowlisted <c>-r</c> never admits <c>-R</c> (STRIDE E6).
 /// </summary>
 sealed record AllowSubcommandsRule(IReadOnlyList<Subcommand> Subcommands) : Rule
 {
@@ -149,10 +150,10 @@ sealed record AllowSubcommandsRule(IReadOnlyList<Subcommand> Subcommands) : Rule
         {
             if (!PrefixMatches(args, sub.Prefix, out var prefixTokens)) continue;
 
-            var allowedFlags = sub.AllowedFlags.Select(f => f.ToLowerInvariant()).ToHashSet();
+            var allowedFlags = sub.AllowedFlags.ToHashSet(StringComparer.Ordinal);
             for (int i = prefixTokens; i < args.Length; i++)
             {
-                if (args[i].StartsWith('-') && !allowedFlags.Contains(Flag.Base(args[i])))
+                if (args[i].StartsWith('-') && !allowedFlags.Contains(Flag.Name(args[i])))
                     return new PolicyResult.Block(
                         $"Flag '{args[i]}' is not allowed for this subcommand",
                         $"Allowed flags: {string.Join(", ", sub.AllowedFlags)}");
@@ -245,16 +246,16 @@ sealed record RequireGitRepoRule : Rule
 /// — a flag that makes the operation tree-preserving, so the guard would only obstruct it. The
 /// motivating case is <c>git checkout -b &lt;new&gt;</c>: creating a branch carries uncommitted
 /// changes onto it (git refuses rather than discards on conflict), unlike a plain branch <em>switch</em>
-/// which the clean-tree guard exists to protect. Flags match on <see cref="Flag.Base"/>, so the
-/// case-fold also admits <c>-B</c> (create-or-reset), which likewise preserves the working tree.
+/// which the clean-tree guard exists to protect. An exemption fails open, so flags match
+/// case-sensitively on <see cref="Flag.Name"/>: exempting <c>-b</c> does not exempt <c>-B</c> (create-or-reset).
 /// </summary>
 sealed record RequireCleanTreeRule(IReadOnlyCollection<string> ExemptFlags) : Rule
 {
-    private readonly HashSet<string> _exempt = ExemptFlags.Select(f => f.ToLowerInvariant()).ToHashSet();
+    private readonly HashSet<string> _exempt = ExemptFlags.ToHashSet(StringComparer.Ordinal);
 
     public override PolicyResult Evaluate(string[] args, in SafetyContext ctx)
     {
-        if (_exempt.Count > 0 && args.Any(a => _exempt.Contains(Flag.Base(a))))
+        if (_exempt.Count > 0 && args.Any(a => _exempt.Contains(Flag.Name(a))))
             return new PolicyResult.Allow();
         return ctx.Repo.IsCleanTree
             ? new PolicyResult.Allow()
